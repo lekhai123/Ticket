@@ -1,0 +1,107 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Users {
+  id        Int       @id @default(autoincrement())
+  email     String    @unique
+  password  String
+  fullName  String
+  role      Role      @default(CUSTOMER)
+  createdAt DateTime  @default(now())
+avatarUrl String?  @db.Text  
+tickets   Tickets[]
+  wallet    Wallets?
+}
+
+model Wallets {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @unique
+  balance   Decimal  @default(0.00) @db.Decimal(12, 2)
+  updatedAt DateTime @updatedAt
+  user      Users    @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Trips {
+  id          Int                    @id @default(autoincrement())
+  route       String
+  departureAt DateTime
+  price       Decimal                @db.Decimal(10, 2)
+  totalSeats  Int                    @default(30)
+  createdAt   DateTime               @default(now())
+  embedding   Unsupported("vector(1536)")?
+  description String?
+  tickets     Tickets[]
+
+  @@index([route, departureAt])
+}
+
+model Tickets {
+  id         Int          @id @default(autoincrement())
+  userId     Int
+  tripId     Int
+  seatNumber Int
+  status     TicketStatus @default(PENDING)
+  createdAt  DateTime     @default(now())
+  trip       Trips        @relation(fields: [tripId], references: [id])
+  user       Users        @relation(fields: [userId], references: [id])
+
+  @@unique([tripId, seatNumber])
+  @@index([userId])
+}
+
+enum OtpType {
+  REGISTER
+  FORGOT_PASSWORD
+}
+
+model OTP {
+  id        Int      @id @default(autoincrement())
+  email     String
+  code      String   @db.VarChar(6)
+  type      OtpType  @default(REGISTER) // 👈 Bổ sung phân loại luồng
+  attempts  Int      @default(0)        // 👈 Bổ sung đếm số lần thử sai
+  expiredAt DateTime
+  createAt  DateTime @default(now())
+
+  @@index([email, code])
+  @@index([email, type])
+}
+
+enum Role {
+  ADMIN
+  CUSTOMER
+}
+
+enum TicketStatus {
+  HELD              // 1. Đang tạm giữ ghế bằng Redis Lock (3-5 phút chờ thanh toán)
+  PENDING           // 2. Đã tạo đơn giữ chỗ thành công, đang chờ thanh toán (Ví/VNPAY)
+  EXPIRED           // 3. Đã hết hạn giữ ghế/chờ thanh toán (Tự động nhả ghế lại cho xe)
+  CONFIRMED         // 4. Đã thanh toán thành công (Vé có hiệu lực)
+  USED              // 5. Khách đã lên xe / Nhà xe đã quét mã QR kiểm tra vé
+  CANCELED          // 6. Khách chủ động hủy vé (Có thể được hoàn tiền vào Ví)
+  REVOKED_BY_ADMIN  // 7. Admin thu hồi vé (Ví dụ: Chuyến xe bị hủy, gian lận)
+}
+model AuditLog {
+  id            String   @id @default(uuid())
+  requestId     String   // Tracing ID xuyên suốt luồng Request
+  userId        Int?
+  action        String   // VD: "BOOK_TICKET", "TOP_UP", "SYSTEM_GIFT_TICKET"
+  batchId       String?  // Mã nhóm chiến dịch (VD: "ERR_PROMO_2026_07_22") để thu hồi hàng loạt
+  resource      String   // Bảng/Entity bị tác động (VD: "Tickets", "Wallets")
+  resourceId    String   // ID của Entity
+  oldData       Json?    // Snapshot dữ liệu TRƯỚC biến động
+  newData       Json?    // Snapshot dữ liệu SAU biến động
+  isRevoked     Boolean  @default(false) // Trạng thái đã bị Admin thu hồi chưa
+  ipAddress     String?
+  createdAt     DateTime @default(now())
+
+  @@index([requestId])
+  @@index([userId])
+  @@index([batchId])
+}
