@@ -162,10 +162,11 @@ export class AdminService {
     // 2. Định danh Batch ID và Request ID
     const finalBatchId = data.batchId?.trim() || `MASS_GIFT_${Date.now()}`;
     const requestId = `REQ_${Date.now()}`;
+    const totalSpent = data.amount * targetUserIds.length;
 
-    // 3. Thực thi Transaction cộng tiền ví & Tạo AuditLog
+    // 3. Thực thi Transaction cộng tiền ví & Tạo 1 Dòng AuditLog Duy Nhất
     return await prisma.$transaction(async (tx) => {
-      // Cộng tiền vào ví các user
+      // Tối ưu 1: Update đồng loạt số dư (Bulk Update - Đã làm rất tốt)
       await tx.wallets.updateMany({
         where: { userId: { in: targetUserIds } },
         data: {
@@ -175,27 +176,33 @@ export class AdminService {
         },
       });
 
-      // Tạo danh sách AuditLogs để lưu vết
-      const auditLogData = targetUserIds.map((uId) => ({
-        requestId,
-        userId: data.adminUserId, // Lấy uy tín từ Token
-        action: "MASS_GIFT_WALLET",
-        batchId: finalBatchId,
-        resource: "Wallets",
-        resourceId: String(uId),
-        newData: { amountAdded: data.amount, reason: data.reason },
-        isRevoked: false,
-      }));
-
-      await tx.auditLog.createMany({
-        data: auditLogData,
+      // Tối ưu 2: Tạo ĐÚNG 1 dòng Audit Log tổng hợp (Summary Log)
+      await tx.auditLog.create({
+        data: {
+          requestId,
+          userId: data.adminUserId,
+          action: "MASS_GIFT_EXECUTE", // Đổi tên action để phân biệt là log tổng hợp
+          batchId: finalBatchId,
+          resource: "System", // Tác động lên toàn hệ thống thay vì 1 ví cụ thể
+          resourceId: finalBatchId,
+          newData: {
+            targetType: data.targetType || "ALL",
+            totalUsersGifted: targetUserIds.length,
+            amountPerUser: data.amount,
+            totalAmountSpent: totalSpent,
+            reason: data.reason,
+            // Lưu lại danh sách ID vào JSON để sau này cần Thu hồi (Revoke) thì lôi ra dùng
+            affectedUserIds: targetUserIds,
+          },
+          isRevoked: false,
+        },
       });
 
       return {
         batchId: finalBatchId,
         totalUsersGifted: targetUserIds.length,
         amountPerUser: data.amount,
-        totalAmountSpent: data.amount * targetUserIds.length,
+        totalAmountSpent: totalSpent,
       };
     });
   }

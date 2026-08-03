@@ -3,18 +3,17 @@ import { tripService } from "../services/trip.service";
 import type { Trip } from "../types";
 
 export const useTrips = () => {
-  // 1. Query lấy danh sách chuyến xe mặc định/ban đầu khi vừa load trang
+  // tripService.getAllTrips() đã trả về trực tiếp Trip[]
   const defaultTripsQuery = useQuery<Trip[], Error>({
     queryKey: ["trips", "default"],
-    queryFn: () => tripService.getAllTrips(), // ĐỔI SANG GỌI GE TALL TRIPS
+    queryFn: () => tripService.getAllTrips(),
   });
 
-  // 2. Mutation cho Tìm kiếm AI (như code cũ)
   const semanticSearchMutation = useMutation<Trip[], Error, string>({
     mutationFn: (prompt: string) => tripService.semanticSearch(prompt),
   });
 
-  // Uu tiên lấy kết quả từ Semantic Search nếu đã search, nếu chưa thì lấy danh sách mặc định
+  // Ưu tiên dữ liệu từ kết quả Semantic Search nếu có
   const trips = (semanticSearchMutation.data ??
     defaultTripsQuery.data ??
     []) as Trip[];

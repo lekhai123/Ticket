@@ -2,21 +2,34 @@ import axiosClient from "./axiosClient";
 import type { ApiResponse } from "../types";
 
 export const walletApi = {
-  getBalance: (userId: number): Promise<ApiResponse<{ balance: number }>> => {
-    return axiosClient.get(`/wallets/${userId}`);
+  getBalance: async (
+    userId: number,
+  ): Promise<ApiResponse<{ balance: number }>> => {
+    const res = await axiosClient.get<ApiResponse<{ balance: number }>>(
+      `/wallets/${userId}`,
+    );
+    return res.data;
   },
 
-  topUp: (
+  topUp: async (
     userId: number,
     payload: { amount: number; action?: string; batchId?: string },
   ): Promise<ApiResponse<{ newBalance: number }>> => {
-    return axiosClient.post(`/wallets/${userId}/topup`, payload);
+    const res = await axiosClient.post<ApiResponse<{ newBalance: number }>>(
+      `/wallets/${userId}/topup`,
+      payload,
+    );
+    return res.data;
   },
 
-  getTransactions: (
+  getTransactions: async (
     userId: number,
     params?: any,
   ): Promise<ApiResponse<any[]>> => {
-    return axiosClient.get(`/wallets/${userId}/transactions`, { params });
+    const res = await axiosClient.get<ApiResponse<any[]>>(
+      `/wallets/${userId}/transactions`,
+      { params },
+    );
+    return res.data;
   },
 };

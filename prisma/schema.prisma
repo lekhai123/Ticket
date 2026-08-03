@@ -86,6 +86,7 @@ enum TicketStatus {
   USED              // 5. Khách đã lên xe / Nhà xe đã quét mã QR kiểm tra vé
   CANCELED          // 6. Khách chủ động hủy vé (Có thể được hoàn tiền vào Ví)
   REVOKED_BY_ADMIN  // 7. Admin thu hồi vé (Ví dụ: Chuyến xe bị hủy, gian lận)
+  CANCELLED
 }
 model AuditLog {
   id            String   @id @default(uuid())

@@ -2,11 +2,17 @@ import axiosClient from "./axiosClient";
 import type { ApiResponse, AuditLog } from "../types";
 
 export const auditApi = {
-  getLogs: (params?: {
+  getLogs: async (params?: {
     action?: string;
     batchId?: string;
     search?: string;
   }): Promise<ApiResponse<AuditLog[]>> => {
-    return axiosClient.get("/admin/audit-logs", { params });
+    const res = await axiosClient.get<ApiResponse<AuditLog[]>>(
+      "/admin/audit-logs",
+      {
+        params,
+      },
+    );
+    return res.data;
   },
 };

@@ -9,7 +9,7 @@ import AdminLayout from "../layouts/AdminLayout";
 // Auth Pages
 import Login from "../pages/auth/Login";
 import Register from "../pages/auth/Register";
-import ResetPassword from "../pages/auth/ResetPassword"; // 👈 IMPORT TRANG RESET PASSWORD
+import ResetPassword from "../pages/auth/ResetPassword";
 
 // Customer Pages
 import SearchTrip from "../pages/customer/SearchTrip";
@@ -33,7 +33,7 @@ export const router = createBrowserRouter([
     children: [
       { path: "login", element: <Login /> },
       { path: "register", element: <Register /> },
-      { path: "forgot-password", element: <ResetPassword /> }, // 👈 ĐIỀU HƯỚNG TỪ NÚT QUÊN MẬT KHẨU SANG ĐÂY
+      { path: "forgot-password", element: <ResetPassword /> },
       { path: "", element: <Navigate to="/auth/login" replace /> },
     ],
   },
@@ -55,10 +55,13 @@ export const router = createBrowserRouter([
     path: "/admin",
     element: <AdminLayout />,
     children: [
-      { index: true, element: <Dashboard /> },
+      // Mặc định truy cập /admin sẽ redirect về /admin/dashboard
+      { index: true, element: <Navigate to="/admin/dashboard" replace /> },
+      { path: "dashboard", element: <Dashboard /> },
       { path: "users", element: <Users /> },
       { path: "mass-gift", element: <MassGift /> },
-      { path: "audit-log", element: <AuditLog /> },
+      // 🎯 Đã sửa từ "audit-log" -> "audit-logs" khớp với AdminLayout
+      { path: "audit-logs", element: <AuditLog /> },
       { path: "revoke", element: <Revoke /> },
       { path: "health", element: <Health /> },
     ],

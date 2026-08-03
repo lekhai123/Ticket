@@ -34,7 +34,6 @@ export const authApi = {
       "/auth/login",
       payload,
     );
-
     return res.data.data;
   },
 
@@ -42,7 +41,6 @@ export const authApi = {
     const res = await axiosClient.post<ApiResponse<AuthResponse>>(
       "/auth/refresh-token",
     );
-
     return res.data.data;
   },
 
@@ -52,7 +50,6 @@ export const authApi = {
 
   getMe: async (): Promise<User> => {
     const res = await axiosClient.get<ApiResponse<User>>("/users/me");
-
     return res.data.data;
   },
 
@@ -65,7 +62,6 @@ export const authApi = {
       "/auth/register",
       payload,
     );
-
     return res.data.data;
   },
 

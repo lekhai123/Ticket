@@ -44,6 +44,88 @@ export default function Wallet() {
     }
   };
 
+  // 🛠️ Helper 1: Bóc tách số tiền chính xác theo từng loại Action/AuditLog
+
+  // 🛠️ Helper 3: Xác định giao dịch Cộng tiền (+) hay Trừ tiền (-)
+  // 🛠️ Helper 1: Bóc tách số tiền
+  const getAmount = (tx: any) => {
+    const { action, newData } = tx;
+
+    if (tx.amount !== undefined && tx.amount !== null) {
+      return Number(tx.amount);
+    }
+
+    if (!newData) return 0;
+
+    if (action === "MASS_GIFT_WALLET") {
+      return Number(newData.amountAdded || newData.amount || 0);
+    }
+
+    if (action === "REVOKE_MASS_GIFT" || action === "REVOKE_BATCH") {
+      return -Math.abs(Number(newData.amountRevoked || newData.amount || 0));
+    }
+
+    // 🎯 Thêm REFUND_TICKET_PAYMENT
+    if (
+      action === "CANCEL_TICKET_REFUND" ||
+      action === "REFUND_TICKET_PAYMENT"
+    ) {
+      return Number(newData.refundAmount || newData.amount || 0);
+    }
+
+    return Number(
+      newData.amount ??
+        newData.amountAdded ??
+        newData.giftAmount ??
+        newData.refundAmount ??
+        0,
+    );
+  };
+
+  // 🛠️ Helper 2: Bóc tách mô tả thân thiện
+  const getDescription = (tx: any) => {
+    const { action, newData, isRevoked } = tx;
+
+    if (newData?.description) return newData.description;
+    if (tx.description) return tx.description;
+
+    switch (action) {
+      case "MASS_GIFT_WALLET": {
+        const reason = newData?.reason ? ` (${newData.reason})` : "";
+        return isRevoked
+          ? `Tặng tiền thưởng${reason} [Đã thu hồi]`
+          : `Nhận thưởng từ hệ thống${reason}`;
+      }
+      case "REVOKE_MASS_GIFT":
+      case "REVOKE_BATCH":
+        return "Thu hồi tiền thưởng từ hệ thống";
+      case "CANCEL_TICKET_REFUND":
+      case "REFUND_TICKET_PAYMENT": // 🎯 Thêm case này
+        return `Hoàn tiền mua vé xe`;
+      case "BOOK_TICKET_PAYMENT":
+        return `Thanh toán mua vé xe`;
+      case "TOP_UP":
+        return "Nạp tiền vào ví";
+      default:
+        return action ? action.replace(/_/g, " ") : "Giao dịch ví";
+    }
+  };
+
+  // 🛠️ Helper 3: Xác định giao dịch Cộng tiền (+) hay Trừ tiền (-)
+  const getIsPositive = (tx: any, amountVal: number) => {
+    if (tx.isRevoked) return false;
+
+    const positiveActions = [
+      "TOP_UP",
+      "CANCEL_TICKET_REFUND",
+      "REFUND_TICKET_PAYMENT", // 🎯 Thêm case cộng tiền
+      "SYSTEM_GIFT_BALANCE",
+      "MASS_GIFT_WALLET",
+    ];
+
+    if (positiveActions.includes(tx.action)) return true;
+    return amountVal > 0;
+  };
   if (!user) return null;
 
   const displayBalance =
@@ -118,38 +200,27 @@ export default function Wallet() {
             )}
 
             {transactionList.map((tx: any) => {
-              // Bóc tách giá trị từ AuditLog hoặc Transaction record
-              const amountVal = Number(
-                tx.amount ??
-                  tx.newData?.amount ??
-                  tx.newData?.refundAmount ??
-                  tx.newData?.giftAmount ??
-                  0,
-              );
-
-              const isPositive =
-                tx.action === "TOP_UP" ||
-                tx.action === "CANCEL_TICKET_REFUND" ||
-                tx.action === "SYSTEM_GIFT_BALANCE" ||
-                amountVal > 0;
-
-              const description =
-                tx.description ||
-                tx.newData?.description ||
-                (tx.action && tx.action.replace(/_/g, " ")) ||
-                "Giao dịch ví";
+              const amountVal = getAmount(tx);
+              const description = getDescription(tx);
+              const isPositive = getIsPositive(tx, amountVal);
 
               return (
                 <div
                   key={tx.id}
-                  className="flex items-center justify-between rounded-2xl p-4 transition hover:bg-zinc-50 dark:hover:bg-zinc-900/50 border border-transparent hover:border-zinc-100 dark:hover:border-zinc-800"
+                  className={`flex items-center justify-between rounded-2xl p-4 transition border border-transparent hover:border-zinc-100 dark:hover:border-zinc-800 ${
+                    tx.isRevoked
+                      ? "opacity-60 bg-zinc-50/50 dark:bg-zinc-900/20"
+                      : "hover:bg-zinc-50 dark:hover:bg-zinc-900/50"
+                  }`}
                 >
                   <div className="flex items-center gap-4">
                     <div
                       className={`flex h-10 w-10 items-center justify-center rounded-full ${
-                        isPositive
-                          ? "bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30"
-                          : "bg-red-100 text-red-600 dark:bg-red-900/30"
+                        tx.isRevoked
+                          ? "bg-zinc-200 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
+                          : isPositive
+                            ? "bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30"
+                            : "bg-red-100 text-red-600 dark:bg-red-900/30"
                       }`}
                     >
                       {isPositive ? (
@@ -167,11 +238,15 @@ export default function Wallet() {
                       </p>
                     </div>
                   </div>
+
+                  {/* Hiển thị số tiền: Nếu bị Revoke thì gạch ngang */}
                   <div
                     className={`font-bold ${
-                      isPositive
-                        ? "text-emerald-600"
-                        : "text-zinc-900 dark:text-white"
+                      tx.isRevoked
+                        ? "line-through text-zinc-400 dark:text-zinc-500"
+                        : isPositive
+                          ? "text-emerald-600"
+                          : "text-zinc-900 dark:text-white"
                     }`}
                   >
                     {isPositive ? "+" : "-"}

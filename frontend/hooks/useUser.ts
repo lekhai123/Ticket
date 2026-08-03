@@ -9,28 +9,21 @@ export const useUser = () => {
   const queryClient = useQueryClient();
   const setUser = useAuthStore((state) => state.setUser);
 
-  // Mutation Đổi Avatar
   const updateAvatarMutation = useMutation({
     mutationFn: (file: File) => userApi.updateAvatar(file),
-    onSuccess: (res: any) => {
-      // Bóc tách đúng thông tin user trả về từ API Cloudinary
-      const updatedUser = res?.data || res;
+    onSuccess: (res) => {
+      // userApi.updateAvatar() trả về ApiResponse<User> -> res.data chứa User object
+      const updatedUser = res.data;
 
-      // Cập nhật ngay thông tin User mới (có avatarUrl) vào RAM (Zustand Store)
       if (updatedUser) {
         setUser(updatedUser);
       }
 
-      // Làm tươi cache Profile
       queryClient.invalidateQueries({ queryKey: ["auth", "profile"] });
       alert("Cập nhật ảnh đại diện thành công!");
     },
     onError: (err: any) => {
-      alert(
-        err?.message ||
-          err?.response?.data?.message ||
-          "Tải ảnh đại diện thất bại!",
-      );
+      alert(err?.message || "Tải ảnh đại diện thất bại!");
     },
   });
 
@@ -50,14 +43,15 @@ export const useUsers = (filters?: {
 }) => {
   const queryClient = useQueryClient();
 
-  // Query Lấy danh sách Users
   const usersQuery = useQuery({
     queryKey: ["users", filters],
-    queryFn: () =>
-      userApi.getUsers(filters).then((res: any) => res.data || res),
+    queryFn: async () => {
+      // userApi.getUsers() trả về ApiResponse<User[]>
+      const res = await userApi.getUsers(filters);
+      return res.data || [];
+    },
   });
 
-  // Mutation Cập nhật trạng thái (ACTIVE / BANNED)
   const updateStatusMutation = useMutation({
     mutationFn: ({ id, status }: { id: number; status: "ACTIVE" | "BANNED" }) =>
       userApi.updateStatus(id, status),
@@ -66,7 +60,6 @@ export const useUsers = (filters?: {
     },
   });
 
-  // Mutation Cập nhật vai trò (ADMIN / CUSTOMER)
   const updateRoleMutation = useMutation({
     mutationFn: ({ id, role }: { id: number; role: "ADMIN" | "CUSTOMER" }) =>
       userApi.updateRole(id, role),

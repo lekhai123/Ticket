@@ -2,9 +2,23 @@ import { Outlet } from "react-router-dom";
 import { BusFront, User, Wallet } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useAuthStore } from "../store/authStore";
+import { useWallet } from "../hooks/useWallet";
+import { formatCurrency } from "../utils/format";
 
 export default function CustomerLayout() {
   const { user, isAuthenticated } = useAuthStore();
+
+  // 1. Fetch số dư thực tế từ hook useWallet
+  const { balance, isLoadingBalance } = useWallet(user?.id || 0);
+
+  // 2. Format số tiền hiển thị
+  const displayBalance =
+    typeof balance === "object"
+      ? balance?.formatted
+      : formatCurrency(Number(balance || 0));
+
+  // 3. Lấy link Avatar (hỗ trợ cả 2 tên field avatarUrl hoặc avatar)
+  const avatarUrl = user?.avatarUrl || (user as any)?.avatar;
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 font-sans selection:bg-indigo-500/30">
@@ -18,18 +32,29 @@ export default function CustomerLayout() {
         <nav className="flex items-center gap-4">
           {isAuthenticated ? (
             <>
+              {/* Nút Ví tiền */}
               <Link
                 to="/customer/wallet"
                 className="flex items-center gap-2 rounded-full bg-zinc-100 px-4 py-2 text-sm font-medium transition hover:bg-zinc-200 dark:bg-zinc-900 dark:hover:bg-zinc-800"
               >
                 <Wallet className="h-4 w-4 text-indigo-500" />
-                {new Intl.NumberFormat("vi-VN").format(user?.balance || 0)} ₫
+                <span>{isLoadingBalance ? "..." : displayBalance}</span>
               </Link>
+
+              {/* Nút Profile / Avatar */}
               <Link
                 to="/customer/profile"
-                className="flex h-9 w-9 items-center justify-center rounded-full bg-zinc-200 dark:bg-zinc-800 transition hover:scale-105"
+                className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800 transition hover:scale-105 border border-zinc-300 dark:border-zinc-700"
               >
-                <User className="h-4 w-4" />
+                {avatarUrl ? (
+                  <img
+                    src={avatarUrl}
+                    alt={user?.name || "Avatar"}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <User className="h-4 w-4 text-zinc-600 dark:text-zinc-300" />
+                )}
               </Link>
             </>
           ) : (

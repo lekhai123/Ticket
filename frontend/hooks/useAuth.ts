@@ -24,11 +24,9 @@ export const useAuth = () => {
 
   useEffect(() => {
     const saved = localStorage.getItem("otp_cooldown_expire");
-
     if (!saved) return;
 
     const remain = Math.ceil((Number(saved) - Date.now()) / 1000);
-
     if (remain > 0) {
       setOtpCooldown(remain);
     } else {
@@ -39,8 +37,8 @@ export const useAuth = () => {
   useEffect(() => {
     const init = async () => {
       try {
+        // authService.refreshToken() đã trả về trực tiếp AuthResponse
         const res: AuthResponse = await authService.refreshToken();
-
         setAuth(res.user, res.accessToken);
       } catch {
         logoutStore();
@@ -61,7 +59,6 @@ export const useAuth = () => {
           localStorage.removeItem("otp_cooldown_expire");
           return 0;
         }
-
         return prev - 1;
       });
     }, 1000);
@@ -74,7 +71,6 @@ export const useAuth = () => {
       "otp_cooldown_expire",
       (Date.now() + seconds * 1000).toString(),
     );
-
     setOtpCooldown(seconds);
   };
 
@@ -115,18 +111,14 @@ export const useAuth = () => {
 
     onSettled: () => {
       localStorage.removeItem("otp_cooldown_expire");
-
       logoutStore();
-
       queryClient.clear();
     },
   });
 
   return {
     user,
-
     isAuthenticated,
-
     isInitializing,
 
     login: loginMutation.mutateAsync,

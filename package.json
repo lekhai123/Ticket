@@ -32,6 +32,7 @@
     "lru-cache": "^11.5.2",
     "lucide-react": "^1.26.0",
     "multer": "^2.2.0",
+    "node-cache": "^5.1.2",
     "prisma": "^6.19.3",
     "react-hook-form": "^7.82.0",
     "react-router-dom": "^7.18.1",

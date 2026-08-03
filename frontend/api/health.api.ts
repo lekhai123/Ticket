@@ -10,7 +10,10 @@ export interface SystemHealthData {
 }
 
 export const healthApi = {
-  getHealthStatus: (): Promise<ApiResponse<SystemHealthData>> => {
-    return axiosClient.get("/admin/system-health");
+  getHealthStatus: async (): Promise<ApiResponse<SystemHealthData>> => {
+    const res = await axiosClient.get<ApiResponse<SystemHealthData>>(
+      "/admin/system-health",
+    );
+    return res.data;
   },
 };

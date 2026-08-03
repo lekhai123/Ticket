@@ -3,24 +3,32 @@ import type { ApiResponse } from "../types";
 
 export interface BookTicketPayload {
   tripId: number | string;
-  seatNumbers?: number[]; // 👈 Khớp với Payload mới ở Booking.tsx
-  seatIds?: string[]; // Giữ lại để tương thích ngược nếu cần
+  seatNumbers?: number[];
+  seatIds?: string[];
   paymentMethod?: "WALLET" | "LATER";
 }
 
 export const ticketApi = {
-  // 1. Đặt vé (Trừ tiền ví + Redis Lock)
-  bookTicket: (payload: BookTicketPayload): Promise<ApiResponse<any>> => {
-    return axiosClient.post("/tickets/book", payload);
+  // 1. Đặt vé
+  bookTicket: async (payload: BookTicketPayload): Promise<ApiResponse<any>> => {
+    const res = await axiosClient.post<ApiResponse<any>>(
+      "/tickets/book",
+      payload,
+    );
+    return res.data;
   },
 
-  // 2. Lấy danh sách vé đã đặt của User (Dùng cho tab "Vé của tôi" trong Profile)
-  getUserTickets: (): Promise<ApiResponse<any>> => {
-    return axiosClient.get("/tickets/my-tickets");
+  // 2. Lấy danh sách vé đã đặt của User
+  getUserTickets: async (): Promise<ApiResponse<any>> => {
+    const res = await axiosClient.get<ApiResponse<any>>("/tickets/my-tickets");
+    return res.data;
   },
 
-  // 3. Khách hàng hủy vé (Hoàn tiền lại vào Ví)
-  cancelTicket: (ticketId: number): Promise<ApiResponse<any>> => {
-    return axiosClient.patch(`/tickets/${ticketId}/cancel`);
+  // 3. Khách hàng hủy vé
+  cancelTicket: async (ticketId: number): Promise<ApiResponse<any>> => {
+    const res = await axiosClient.patch<ApiResponse<any>>(
+      `/tickets/${ticketId}/cancel`,
+    );
+    return res.data;
   },
 };

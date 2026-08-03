@@ -23,6 +23,10 @@ export class TicketService {
       throw error;
     }
 
+    // 🎯 1. Tạo Batch ID và Request ID nhất quán cho đợt đặt vé này
+    const batchId = `BOOK_${Date.now()}`;
+    const requestId = `BOOK_TICKET_${Date.now()}`;
+
     return await prisma.$transaction(async (tx) => {
       // 1. Kiểm tra chuyến xe
       const trip = await tx.trips.findUnique({
@@ -78,12 +82,14 @@ export class TicketService {
           },
         },
       });
-      const requestId = `BOOK_TICKET_${Date.now()}`;
+
+      // 🎯 Bổ sung batchId vào AuditLog để Admin UI hiển thị mã màu cam chuẩn xác
       await tx.auditLog.create({
         data: {
           requestId,
           userId,
           action: "BOOK_TICKET_PAYMENT",
+          batchId, // 👈 ĐÃ BỔ SUNG BATCH ID VÀO ĐÂY
           resource: "Wallets",
           resourceId: String(wallet.id),
           newData: {
@@ -91,6 +97,7 @@ export class TicketService {
             description: `Thanh toán mua ${cleanSeats.length} vé ghế (${cleanSeats.join(", ")}) chuyến ${trip.route}`,
             tripId,
             seats: cleanSeats,
+            batchId, // Lưu dự phòng vào JSON
           },
           isRevoked: false,
         },
@@ -101,12 +108,20 @@ export class TicketService {
 
       try {
         for (const seatNum of cleanSeats) {
+          await tx.tickets.deleteMany({
+            where: {
+              tripId,
+              seatNumber: seatNum,
+              status: { in: ["REVOKED_BY_ADMIN", "CANCELLED"] },
+            },
+          });
           const newTicket = await tx.tickets.create({
             data: {
               userId,
               tripId,
-              seatNumber: seatNum, // 👈 1 ghế / 1 vé (kiểu Int)
+              seatNumber: seatNum, // 1 ghế / 1 vé (kiểu Int)
               status: "CONFIRMED",
+              // batchId, // 👈 Bỏ comment dòng này nếu bảng Tickets trong schema.prisma của bạn có cột batchId
             },
             include: {
               trip: true,
@@ -116,6 +131,7 @@ export class TicketService {
         }
 
         return {
+          batchId, // 🎯 Trả về batchId cho client (Frontend)
           tickets: createdTickets,
           totalPaid: totalPrice,
           remainingBalance: updatedWallet.balance,
@@ -133,9 +149,7 @@ export class TicketService {
       }
     });
   }
-  /**
-   * Lấy danh sách lịch sử vé của User
-   */
+
   static async getTicketsByUserId(userId: number) {
     return await prisma.tickets.findMany({
       where: { userId },

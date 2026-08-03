@@ -4,7 +4,6 @@ import type { ApiResponse, Trip } from "../types";
 export const tripApi = {
   async getAllTrips(): Promise<Trip[]> {
     const res = await axiosClient.get<ApiResponse<Trip[]>>("/trips");
-
     return res.data.data;
   },
 
@@ -16,7 +15,6 @@ export const tripApi = {
     const res = await axiosClient.get<ApiResponse<Trip[]>>("/trips/search", {
       params,
     });
-
     return res.data.data;
   },
 
@@ -25,13 +23,11 @@ export const tripApi = {
       "/trips/semantic-search",
       { prompt },
     );
-
     return res.data.data;
   },
 
   async getById(id: number | string): Promise<Trip> {
     const res = await axiosClient.get<ApiResponse<Trip>>(`/trips/${id}`);
-
     return res.data.data;
   },
 };

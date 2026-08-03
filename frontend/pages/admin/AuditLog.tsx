@@ -6,8 +6,15 @@ import { formatDate } from "../../utils/format";
 
 export default function AuditLog() {
   const [search, setSearch] = useState("");
-  const { data: logs, isLoading } = useAuditLogs({ search }); // Gọi API thật
+  // 1. Đổi tên biến destructured thành rawData để tránh nhầm lẫn
+  const { data: rawData, isLoading } = useAuditLogs({ search });
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
+
+  // 2. 🎯 Bóc tách chính xác mảng logs từ Object JSON trả về
+  const logsList =
+    rawData?.logs ||
+    rawData?.data?.logs ||
+    (Array.isArray(rawData) ? rawData : []);
 
   return (
     <div className="space-y-6">
@@ -45,14 +52,21 @@ export default function AuditLog() {
                   Đang tải dữ liệu...
                 </td>
               </tr>
+            ) : logsList.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="text-center py-10 text-zinc-500">
+                  Không tìm thấy lịch sử nào.
+                </td>
+              </tr>
             ) : (
-              logs?.map((log) => (
+              // 3. 🎯 Dùng logsList (chắc chắn là Array) để map dữ liệu
+              logsList.map((log: any) => (
                 <React.Fragment key={log.id}>
                   <tr
                     onClick={() =>
                       setExpandedRow(expandedRow === log.id ? null : log.id)
                     }
-                    className="cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-900/50"
+                    className="cursor-pointer transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-900/50"
                   >
                     <td className="px-4 py-3">
                       {expandedRow === log.id ? (
@@ -81,6 +95,8 @@ export default function AuditLog() {
                       </div>
                     </td>
                   </tr>
+
+                  {/* Dòng hiển thị chi tiết (Expanded) */}
                   {expandedRow === log.id && (
                     <tr>
                       <td

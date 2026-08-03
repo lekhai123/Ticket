@@ -2,24 +2,33 @@ import axiosClient from "./axiosClient";
 import type { ApiResponse } from "../types";
 
 export const adminApi = {
-  revokeBatch: (payload: {
+  revokeBatch: async (payload: {
     batchId: string;
     adminUserId: number;
   }): Promise<ApiResponse<{ revokedCount: number }>> => {
-    return axiosClient.post("/admin/revoke-batch", payload);
+    const res = await axiosClient.post<ApiResponse<{ revokedCount: number }>>(
+      "/admin/revoke-batch",
+      payload,
+    );
+    return res.data;
   },
 
-  runReconciliation: (): Promise<ApiResponse<any[]>> => {
-    return axiosClient.get("/admin/reconcile");
+  runReconciliation: async (): Promise<ApiResponse<any[]>> => {
+    const res = await axiosClient.get<ApiResponse<any[]>>("/admin/reconcile");
+    return res.data;
   },
 
-  massGift: (payload: {
+  massGift: async (payload: {
     targetType: string;
     targetId?: string;
     amount: number;
     batchId: string;
     reason: string;
   }): Promise<ApiResponse<{ successCount: number }>> => {
-    return axiosClient.post("/admin/mass-gift", payload);
+    const res = await axiosClient.post<ApiResponse<{ successCount: number }>>(
+      "/admin/mass-gift",
+      payload,
+    );
+    return res.data;
   },
 };

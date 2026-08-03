@@ -22,10 +22,6 @@ import { formatCurrency } from "../../utils/format";
 
 export default function Dashboard() {
   const { data: rawStats, isLoading } = useAdminDashboard();
-
-  // Bóc tách data an toàn từ Axios / Response
-  const stats = (rawStats as any)?.data || rawStats;
-
   if (isLoading) {
     return (
       <div className="flex h-[80vh] items-center justify-center">
@@ -33,6 +29,12 @@ export default function Dashboard() {
       </div>
     );
   }
+  const stats = (rawStats as any)?.data || rawStats;
+  const formatYAxis = (val: number) => {
+    if (val >= 1000000) return `${(val / 1000000).toFixed(1)}M`;
+    if (val >= 1000) return `${(val / 1000).toFixed(0)}k`;
+    return `${val}`;
+  };
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
@@ -46,7 +48,7 @@ export default function Dashboard() {
           </p>
         </div>
         <div className="flex items-center gap-2 text-sm font-medium text-emerald-600 bg-emerald-100 px-3 py-1.5 rounded-full dark:bg-emerald-900/30 dark:text-emerald-400">
-          <Activity className="h-4 w-4" /> Live
+          <Activity className="h-4 w-4 animate-pulse" /> Live
         </div>
       </div>
 
@@ -67,7 +69,7 @@ export default function Dashboard() {
           icon={Users}
         />
         <StatCard
-          title="Vé Hôm Nay"
+          title="Vé Bán Hôm Nay"
           value={(
             stats?.totalTicketsSold ??
             stats?.todayTickets ??
@@ -86,7 +88,6 @@ export default function Dashboard() {
 
       {/* Charts Section */}
       <div className="grid grid-cols-1 lg:grid-cols-7 gap-6">
-        {/* Biểu đồ Doanh Thu */}
         <div className="lg:col-span-4 rounded-2xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-950">
           <h3 className="text-lg font-semibold mb-6">Doanh thu 7 ngày qua</h3>
           <div className="h-[300px] w-full">
@@ -118,7 +119,7 @@ export default function Dashboard() {
                   axisLine={false}
                   tickLine={false}
                   tick={{ fontSize: 12 }}
-                  tickFormatter={(val) => `${val / 1000000}M`}
+                  tickFormatter={formatYAxis}
                 />
                 <Tooltip />
                 <Area
@@ -134,7 +135,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Biểu đồ Tuyến đường */}
         <div className="lg:col-span-3 rounded-2xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-950">
           <h3 className="text-lg font-semibold mb-6">Top Tuyến Đường</h3>
           <div className="h-[300px] w-full">

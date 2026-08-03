@@ -5,16 +5,21 @@ import { healthApi } from "../api/health.api";
 export const useAdminDashboard = () => {
   return useQuery({
     queryKey: ["admin", "dashboard-stats"],
-    queryFn: () =>
-      axiosClient.get("/admin/dashboard-stats").then((res) => res.data),
-    refetchInterval: 60000, // Tự động refetch mỗi 1 phút để cập nhật biểu đồ
+    queryFn: async () => {
+      const res = await axiosClient.get("/admin/dashboard-stats");
+      return res.data;
+    },
+    refetchInterval: 60000,
   });
 };
 
 export const useSystemHealth = () => {
   return useQuery({
     queryKey: ["admin", "system-health"],
-    queryFn: () => healthApi.getHealthStatus().then((res) => res.data),
-    refetchInterval: 15000, // Ping liên tục mỗi 15 giây để check server sống/chết
+    queryFn: async () => {
+      const res = await healthApi.getHealthStatus();
+      return res.data; // Lấy dữ liệu SystemHealthData từ ApiResponse
+    },
+    refetchInterval: 15000,
   });
 };
