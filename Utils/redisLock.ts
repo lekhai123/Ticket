@@ -6,7 +6,7 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const primaryUrl = process.env.REDIS_URL;
-const backupUrl = process.env["REDIS_URL-BACKUP"];
+const backupUrl = process.env.REDIS_URL_BACKUP;
 
 if (!primaryUrl) {
   throw new Error("❌ Khai báo thiếu REDIS_URL trong file .env!");
