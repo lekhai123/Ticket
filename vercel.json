@@ -10,22 +10,7 @@
     },
     {
       "src": "api/index.ts",
-      "use": "@vercel/node",
-      "config": {
-        "includeFiles": [
-          "server.ts",
-          "Controller/**",
-          "Router/**",
-          "Service/**",
-          "Middleware/**",
-          "jobs/**",
-          "database/**",
-          "config/**",
-          "Validation/**",
-          "Utils/**",
-          "prisma/**"
-        ]
-      }
+      "use": "@vercel/node"
     }
   ],
   "routes": [
