@@ -15,9 +15,9 @@ cloudinaryPrimary.config({
 
 // 2. Config Cloudinary Backup (Đọc biến có dấu - trong .env)
 cloudinaryBackup.config({
-  cloud_name: process.env["CLOUDINARY_CLOUD_NAME-BACKUP"] || "",
-  api_key: process.env["CLOUDINARY_API_KEY-BACKUP"] || "",
-  api_secret: process.env["CLOUDINARY_API_SECRET-BACKUP"] || "",
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME_BACKUP || "",
+  api_key: process.env.CLOUDINARY_API_KEY_BACKUP || "",
+  api_secret: process.env.CLOUDINARY_API_SECRET_BACKUP || "",
   secure: true,
 });
 
