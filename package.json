@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@google/genai": "^2.12.0",
+    "@google/generative-ai": "^0.24.1",
     "@hookform/resolvers": "^5.4.0",
     "@prisma/client": "^6.19.3",
     "@tailwindcss/vite": "^4.3.3",
@@ -33,6 +34,7 @@
     "lucide-react": "^1.26.0",
     "multer": "^2.2.0",
     "node-cache": "^5.1.2",
+    "node-cron": "^4.6.0",
     "prisma": "^6.19.3",
     "react-hook-form": "^7.82.0",
     "react-router-dom": "^7.18.1",
@@ -54,6 +56,7 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/multer": "^2.2.0",
     "@types/node": "^26.1.1",
+    "@types/node-cron": "^3.0.11",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "autoprefixer": "^10.5.4",

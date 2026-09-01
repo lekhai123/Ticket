@@ -24,7 +24,7 @@ import MassGift from "../pages/admin/MassGift";
 import AuditLog from "../pages/admin/AuditLog";
 import Revoke from "../pages/admin/Revoke";
 import Health from "../pages/admin/Health";
-
+import { FinancialReconciliation } from "../pages/admin/FinancialReconciliation";
 export const router = createBrowserRouter([
   // 1. AUTH ROUTES
   {
@@ -64,6 +64,7 @@ export const router = createBrowserRouter([
       { path: "audit-logs", element: <AuditLog /> },
       { path: "revoke", element: <Revoke /> },
       { path: "health", element: <Health /> },
+      { path: "reconciliation", element: <FinancialReconciliation /> },
     ],
   },
 

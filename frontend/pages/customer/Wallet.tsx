@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Wallet as WalletIcon,
@@ -45,9 +45,6 @@ export default function Wallet() {
   };
 
   // 🛠️ Helper 1: Bóc tách số tiền chính xác theo từng loại Action/AuditLog
-
-  // 🛠️ Helper 3: Xác định giao dịch Cộng tiền (+) hay Trừ tiền (-)
-  // 🛠️ Helper 1: Bóc tách số tiền
   const getAmount = (tx: any) => {
     const { action, newData } = tx;
 
@@ -57,20 +54,28 @@ export default function Wallet() {
 
     if (!newData) return 0;
 
-    if (action === "MASS_GIFT_WALLET") {
-      return Number(newData.amountAdded || newData.amount || 0);
+    // Nếu có trường amount tường minh trong newData (như log thu hồi lưu amount âm)
+    if (newData.amount !== undefined && newData.amount !== null) {
+      return Number(newData.amount);
     }
 
-    if (action === "REVOKE_MASS_GIFT" || action === "REVOKE_BATCH") {
-      return -Math.abs(Number(newData.amountRevoked || newData.amount || 0));
+    if (action === "MASS_GIFT_RECEIVED" || action === "MASS_GIFT_WALLET") {
+      return Number(newData.amountAdded || newData.giftAmount || 0);
     }
 
-    // 🎯 Thêm REFUND_TICKET_PAYMENT
+    if (
+      action === "MASS_GIFT_REVOKED" ||
+      action === "REVOKE_MASS_GIFT" ||
+      action === "REVOKE_BATCH"
+    ) {
+      return -Math.abs(Number(newData.amount || 0));
+    }
+
     if (
       action === "CANCEL_TICKET_REFUND" ||
       action === "REFUND_TICKET_PAYMENT"
     ) {
-      return Number(newData.refundAmount || newData.amount || 0);
+      return Number(newData.amount || newData.refundAmount || 0);
     }
 
     return Number(
@@ -90,20 +95,22 @@ export default function Wallet() {
     if (tx.description) return tx.description;
 
     switch (action) {
+      case "MASS_GIFT_RECEIVED":
       case "MASS_GIFT_WALLET": {
         const reason = newData?.reason ? ` (${newData.reason})` : "";
         return isRevoked
-          ? `Tặng tiền thưởng${reason} [Đã thu hồi]`
+          ? `Nhận thưởng từ hệ thống${reason} [Đã thu hồi]`
           : `Nhận thưởng từ hệ thống${reason}`;
       }
+      case "MASS_GIFT_REVOKED":
       case "REVOKE_MASS_GIFT":
       case "REVOKE_BATCH":
-        return "Thu hồi tiền thưởng từ hệ thống";
+        return newData?.description || "Bị thu hồi tiền thưởng từ hệ thống";
       case "CANCEL_TICKET_REFUND":
-      case "REFUND_TICKET_PAYMENT": // 🎯 Thêm case này
-        return `Hoàn tiền mua vé xe`;
+      case "REFUND_TICKET_PAYMENT":
+        return "Hoàn tiền mua vé xe";
       case "BOOK_TICKET_PAYMENT":
-        return `Thanh toán mua vé xe`;
+        return "Thanh toán mua vé xe";
       case "TOP_UP":
         return "Nạp tiền vào ví";
       default:
@@ -115,22 +122,27 @@ export default function Wallet() {
   const getIsPositive = (tx: any, amountVal: number) => {
     if (tx.isRevoked) return false;
 
+    // Nếu amountVal trong DB lưu sẵn số âm (vd: log thu hồi tiền) -> Chắc chắn là trừ tiền (-)
+    if (amountVal < 0) return false;
+
     const positiveActions = [
       "TOP_UP",
       "CANCEL_TICKET_REFUND",
-      "REFUND_TICKET_PAYMENT", // 🎯 Thêm case cộng tiền
+      "REFUND_TICKET_PAYMENT",
       "SYSTEM_GIFT_BALANCE",
+      "MASS_GIFT_RECEIVED",
       "MASS_GIFT_WALLET",
     ];
 
     if (positiveActions.includes(tx.action)) return true;
     return amountVal > 0;
   };
+
   if (!user) return null;
 
   const displayBalance =
     typeof balance === "object"
-      ? balance?.formatted
+      ? (balance as any)?.formatted
       : formatCurrency(Number(balance || 0));
 
   return (
@@ -145,7 +157,7 @@ export default function Wallet() {
             <div className="relative z-10 flex h-full flex-col justify-between">
               <div className="flex items-center justify-between">
                 <span className="font-medium tracking-wider opacity-80 uppercase">
-                  {(user as any).fullName || user.name}
+                  {(user as any).fullName || (user as any).name}
                 </span>
                 <WalletIcon className="h-6 w-6 opacity-80" />
               </div>
@@ -246,7 +258,7 @@ export default function Wallet() {
                         ? "line-through text-zinc-400 dark:text-zinc-500"
                         : isPositive
                           ? "text-emerald-600"
-                          : "text-zinc-900 dark:text-white"
+                          : "text-red-600 dark:text-red-400"
                     }`}
                   >
                     {isPositive ? "+" : "-"}

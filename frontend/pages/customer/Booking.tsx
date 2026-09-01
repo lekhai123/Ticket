@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bus, Wallet, AlertCircle } from "lucide-react";
+import { Bus, Wallet, AlertCircle, Lock, LockKeyhole } from "lucide-react";
 import { tripApi } from "../../api/trip.api";
 import { useWallet } from "../../hooks/useWallet";
 import { useTicket } from "../../hooks/useTicket";
@@ -16,18 +16,23 @@ export default function Booking() {
   const queryClient = useQueryClient();
   const user = useAuthStore((state) => state.user);
 
+  // State mở Modal khi Ví bị Khóa / Âm tiền
+  const [lockedWalletModal, setLockedWalletModal] = useState<{
+    isOpen: boolean;
+    message: string;
+  }>({ isOpen: false, message: "" });
+
   // 1. Fetch chuyến xe thực tế theo ID
   const { data: trip, isLoading: isTripLoading } = useQuery({
     queryKey: ["trip", id],
     queryFn: async () => {
       if (!id) return null;
-
       return await tripApi.getById(id);
     },
     enabled: !!id,
   });
 
-  // 2. Fetch số dư ví
+  // 2. Fetch số dư ví & trạng thái ví
   const { balance, isLoadingBalance } = useWallet(user?.id || 0);
   const { bookTicket, isBooking } = useTicket();
 
@@ -38,7 +43,7 @@ export default function Booking() {
     ? trip.route.split(" - ")
     : [trip?.origin || "--", trip?.destination || "--"];
 
-  // 3. Render danh sách 30 ghế xe từ Backend
+  // Render danh sách 30 ghế xe từ Backend
   const bookedSeatNumbers: number[] =
     trip?.tickets
       ?.filter((t: any) => ["HELD", "PENDING", "CONFIRMED"].includes(t.status))
@@ -66,29 +71,47 @@ export default function Booking() {
   const unitPrice = Number(trip?.price || 0);
   const totalPrice = selectedSeats.length * unitPrice;
   const rawBalance = Number(balance?.raw || 0);
-  const canAfford = rawBalance >= totalPrice;
 
-  // 4. Xử lý đặt vé (Gửi 1 mảng tất cả các ghế đã chọn)
+  // 🎯 KIỂM TRA ĐIỀU KIỆN VÍ: Âm tiền hoặc Bị Khóa
+  const isWalletLocked = Boolean((balance as any)?.isLocked);
+  const isDebt = rawBalance < 0;
+  const canAfford = rawBalance >= totalPrice && !isWalletLocked && !isDebt;
+
+  // 3. Xử lý đặt vé
   const handleConfirmBooking = async () => {
     if (!canAfford || selectedSeats.length === 0 || !id) return;
 
     try {
       await bookTicket({
         tripId: Number(id),
-        seatNumbers: selectedSeats, // 👈 Gửi cả mảng [11, 12] lên Backend
+        seatNumbers: selectedSeats,
         paymentMethod: "WALLET",
       } as any);
 
-      // 🎯 Xóa cache để làm tươi sơ đồ ghế & Ví điện tử
+      // Xóa cache để làm tươi sơ đồ ghế & Ví
       queryClient.invalidateQueries({ queryKey: ["trip", id] });
       queryClient.invalidateQueries({ queryKey: ["wallet"] });
 
       alert(`Thanh toán thành công ${selectedSeats.length} vé từ Ví!`);
       navigate("/customer/wallet");
     } catch (err: any) {
-      alert(
-        err.response?.data?.message || err.message || "Thanh toán thất bại.",
-      );
+      const errResponse = err.response?.data;
+
+      // 🚨 BẮT LỖI KHI VÍ BỊ KHÓA HOẶC ÂM TIỀN TỪ BACKEND (Status 403 / WALLET_LOCKED_OR_DEBT)
+      if (
+        err.response?.status === 403 ||
+        errResponse?.code === "WALLET_LOCKED_OR_DEBT"
+      ) {
+        setLockedWalletModal({
+          isOpen: true,
+          message:
+            errResponse?.message ||
+            "Ví của bạn đang bị khóa do dính chênh lệch tài chính/ghi nợ âm. Vui lòng nạp tiền để mở khóa!",
+        });
+        return;
+      }
+
+      alert(errResponse?.message || err.message || "Thanh toán thất bại.");
     }
   };
 
@@ -152,33 +175,114 @@ export default function Booking() {
             </div>
           </div>
 
-          {/* Thông tin số dư ví */}
-          <div className="rounded-xl bg-zinc-100 p-4 mb-6 dark:bg-zinc-900">
-            <div className="flex items-center gap-3 mb-2">
-              <Wallet className="h-5 w-5 text-indigo-500" />
-              <span className="font-medium text-sm">Số dư Ví cá nhân</span>
+          {/* BOX CẢNH BÁO SỐ DƯ VÍ & TRẠNG THÁI KHÓA VÍ */}
+          <div
+            className={cn(
+              "rounded-xl p-4 mb-6 transition-all",
+              isWalletLocked || isDebt
+                ? "bg-red-50 border border-red-200 dark:bg-red-950/30 dark:border-red-900/50"
+                : "bg-zinc-100 dark:bg-zinc-900",
+            )}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                {isWalletLocked ? (
+                  <LockKeyhole className="h-5 w-5 text-red-600 animate-pulse" />
+                ) : (
+                  <Wallet className="h-5 w-5 text-indigo-500" />
+                )}
+                <span className="font-medium text-sm">Số dư Ví cá nhân</span>
+              </div>
+              {isWalletLocked && (
+                <span className="text-[10px] font-bold px-2 py-0.5 bg-red-600 text-white rounded-full">
+                  ĐÃ KHÓA VÍ
+                </span>
+              )}
             </div>
-            <div className="text-2xl font-bold text-emerald-500">
+
+            <div
+              className={cn(
+                "text-2xl font-bold",
+                isDebt ? "text-red-600 dark:text-red-400" : "text-emerald-500",
+              )}
+            >
               {isLoadingBalance ? "..." : formatCurrency(rawBalance)}
             </div>
-            {!canAfford && selectedSeats.length > 0 && (
+
+            {/* Cảnh báo chi tiết lý do không thể mua */}
+            {isWalletLocked ? (
+              <p className="text-red-600 text-xs mt-2 flex items-start gap-1 font-medium">
+                <Lock className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" /> Ví bị khóa
+                do dính sai số đối soát. Vui lòng nạp tiền thanh toán khoản nợ
+                hoặc liên hệ Admin!
+              </p>
+            ) : isDebt ? (
+              <p className="text-red-600 text-xs mt-2 flex items-start gap-1 font-medium">
+                <AlertCircle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" /> Ví
+                của bạn đang âm tiền. Vui lòng nạp thêm để trả nợ!
+              </p>
+            ) : !canAfford && selectedSeats.length > 0 ? (
               <p className="text-red-500 text-xs mt-2 flex items-center gap-1 font-medium">
                 <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" /> Số dư ví
                 không đủ. Vui lòng nạp thêm tiền!
               </p>
-            )}
+            ) : null}
           </div>
 
           <Button
-            className="w-full h-12 text-base font-semibold"
+            className={cn(
+              "w-full h-12 text-base font-semibold",
+              (isWalletLocked || isDebt) &&
+                "bg-red-600 hover:bg-red-700 text-white",
+            )}
             disabled={selectedSeats.length === 0 || !canAfford}
             isLoading={isBooking}
             onClick={handleConfirmBooking}
           >
-            Thanh toán bằng Ví ngay
+            {isWalletLocked
+              ? "Ví Đang Bị Khóa"
+              : isDebt
+                ? "Ví Đang Âm Tiền"
+                : "Thanh toán bằng Ví ngay"}
           </Button>
         </div>
       </div>
+
+      {/* 🚨 MODAL THÔNG BÁO VÍ BỊ KHÓA / NỢ TIỀN */}
+      {lockedWalletModal.isOpen && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-zinc-900 rounded-2xl w-full max-w-md p-6 shadow-2xl border border-red-500/30 text-center space-y-4 animate-in fade-in zoom-in duration-200">
+            <div className="mx-auto w-12 h-12 bg-red-100 dark:bg-red-950/50 text-red-600 rounded-full flex items-center justify-center">
+              <LockKeyhole className="w-6 h-6 animate-bounce" />
+            </div>
+
+            <h3 className="text-lg font-bold text-zinc-900 dark:text-zinc-100">
+              Tài Khoản Tạm Thời Bị Hạn Chế
+            </h3>
+
+            <p className="text-sm text-zinc-600 dark:text-zinc-300 leading-relaxed">
+              {lockedWalletModal.message}
+            </p>
+
+            <div className="pt-2 flex gap-3">
+              <button
+                onClick={() =>
+                  setLockedWalletModal({ isOpen: false, message: "" })
+                }
+                className="flex-1 py-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 text-xs font-semibold hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+              >
+                Đóng
+              </button>
+              <button
+                onClick={() => navigate("/customer/wallet/topup")}
+                className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-all shadow-md"
+              >
+                Nạp Tiền Ngay ➔
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

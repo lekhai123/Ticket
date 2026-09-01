@@ -1,5 +1,8 @@
+import type { Request, Response, NextFunction } from "express";
 import prisma from "../database/prismaClient";
-import { redis } from "../Utils/redisLock";
+import { redisPrimary, redisBackup } from "../Utils/redisLock";
+import { cloudinaryPrimary, cloudinaryBackup } from "../config/cloudinary";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 export class AdminService {
   /**
    * Lấy số liệu thống kê tổng quan hệ thống cho Admin Dashboard
@@ -129,6 +132,8 @@ export class AdminService {
   }
   // FILE: Service/adminService.ts
 
+  // FILE: Service/adminService.ts
+
   static async executeMassGift(data: {
     adminUserId: number;
     amount: number;
@@ -137,23 +142,32 @@ export class AdminService {
     targetId?: string;
     reason: string;
   }) {
-    // 1. Xác định danh sách target User IDs
-    let targetUserIds: number[] = [];
+    // 1. Xác định danh sách target Users (Không ép type number thủ công cho balance để Prisma tự infer)
+    let targetUsers: {
+      id: number;
+      wallet: { id: number; balance: any } | null;
+    }[] = [];
 
     if (data.targetType === "SINGLE" && data.targetId) {
-      targetUserIds = [Number(data.targetId)];
-    } else {
-      // Trường hợp ALL hoặc không truyền targetType -> lấy toàn bộ CUSTOMER
-      const allCustomers = await prisma.users.findMany({
-        where: { role: "CUSTOMER" },
-        select: { id: true },
+      const singleUser = await prisma.users.findUnique({
+        where: { id: Number(data.targetId) },
+        select: { id: true, wallet: { select: { id: true, balance: true } } },
       });
-      targetUserIds = allCustomers.map((u) => u.id);
+      if (singleUser) targetUsers = [singleUser];
+    } else {
+      targetUsers = await prisma.users.findMany({
+        where: { role: "CUSTOMER" },
+        select: { id: true, wallet: { select: { id: true, balance: true } } },
+      });
     }
+
+    // Lọc các User có Ví hợp lệ
+    const validUsers = targetUsers.filter((u) => u.wallet !== null);
+    const targetUserIds = validUsers.map((u) => u.id);
 
     if (targetUserIds.length === 0) {
       const error: any = new Error(
-        "Không tìm thấy người dùng nào để tặng quà!",
+        "Không tìm thấy người dùng hợp lệ để tặng quà!",
       );
       error.statusCode = 400;
       throw error;
@@ -164,9 +178,9 @@ export class AdminService {
     const requestId = `REQ_${Date.now()}`;
     const totalSpent = data.amount * targetUserIds.length;
 
-    // 3. Thực thi Transaction cộng tiền ví & Tạo 1 Dòng AuditLog Duy Nhất
+    // 3. Thực thi Transaction
     return await prisma.$transaction(async (tx) => {
-      // Tối ưu 1: Update đồng loạt số dư (Bulk Update - Đã làm rất tốt)
+      // Bulk Update số dư
       await tx.wallets.updateMany({
         where: { userId: { in: targetUserIds } },
         data: {
@@ -176,14 +190,44 @@ export class AdminService {
         },
       });
 
-      // Tối ưu 2: Tạo ĐÚNG 1 dòng Audit Log tổng hợp (Summary Log)
+      // 🟢 Chuyển Decimal sang number bằng Number(...) để hết lỗi TS2322
+      const userAuditLogs = validUsers.map((u) => {
+        const oldBalance = Number(u.wallet!.balance); // 🎯 Convert Decimal -> number ở đây!
+        const newBalance = oldBalance + data.amount;
+
+        return {
+          requestId,
+          userId: u.id,
+          action: "MASS_GIFT_RECEIVED",
+          batchId: finalBatchId,
+          resource: "Wallets",
+          resourceId: String(u.wallet!.id),
+          oldData: { balance: oldBalance },
+          newData: {
+            amount: data.amount,
+            giftAmount: data.amount,
+            description: `Nhận quà tặng từ Admin: +${data.amount.toLocaleString("vi-VN")} VNĐ (Lý do: ${data.reason})`,
+            newBalance: newBalance,
+            reason: data.reason,
+          },
+          ipAddress: null,
+          isRevoked: false,
+        };
+      });
+
+      // Bulk Insert AuditLogs
+      await tx.auditLog.createMany({
+        data: userAuditLogs,
+      });
+
+      // AuditLog tổng hợp cho Admin
       await tx.auditLog.create({
         data: {
           requestId,
           userId: data.adminUserId,
-          action: "MASS_GIFT_EXECUTE", // Đổi tên action để phân biệt là log tổng hợp
+          action: "MASS_GIFT_EXECUTE",
           batchId: finalBatchId,
-          resource: "System", // Tác động lên toàn hệ thống thay vì 1 ví cụ thể
+          resource: "System",
           resourceId: finalBatchId,
           newData: {
             targetType: data.targetType || "ALL",
@@ -191,7 +235,6 @@ export class AdminService {
             amountPerUser: data.amount,
             totalAmountSpent: totalSpent,
             reason: data.reason,
-            // Lưu lại danh sách ID vào JSON để sau này cần Thu hồi (Revoke) thì lôi ra dùng
             affectedUserIds: targetUserIds,
           },
           isRevoked: false,
@@ -229,6 +272,14 @@ export class AdminService {
       whereCondition.userId = params.userId;
     }
 
+    // 🎯 BỔ SUNG: Nếu Admin đang xem trang AuditLog tổng quan (Không filter theo userId hay action cụ thể)
+    // Lọc bỏ bớt các log cá nhân nhỏ lẻ để màn hình Admin sạch đẹp!
+    if (!params.userId && !params.action) {
+      whereCondition.action = {
+        notIn: ["MASS_GIFT_RECEIVED", "MASS_GIFT_REVOKED"],
+      };
+    }
+
     const [logs, total] = await prisma.$transaction([
       prisma.auditLog.findMany({
         where: whereCondition,
@@ -253,7 +304,7 @@ export class AdminService {
   static async getHealthStatus() {
     const startTime = Date.now();
 
-    // 1. Check Database (PostgreSQL)
+    // 1. Check PostgreSQL Database
     let dbLatency = "N/A";
     let dbStatus = "HEALTHY";
     try {
@@ -264,30 +315,87 @@ export class AdminService {
       dbStatus = "DOWN";
     }
 
-    // 2. Check Redis (Nếu có dùng ioredis hoặc redis client)
-    let redisLatency = "N/A";
-    let redisStatus = "HEALTHY";
+    // 2. Check Redis Primary & Redis Backup
+    let redisPrimaryLatency = "N/A";
+    let redisPrimaryStatus = "HEALTHY";
     try {
-      const redisStart = Date.now();
-      await redis.ping(); // Gọi ping tới Redis instance đã import
-      redisLatency = `${Date.now() - redisStart}ms`;
+      const start = Date.now();
+      await redisPrimary.ping();
+      redisPrimaryLatency = `${Date.now() - start}ms`;
     } catch (error) {
-      redisStatus = "DOWN";
+      redisPrimaryStatus = "DOWN";
     }
 
-    // 3. Check Gemini AI API (Kiểm tra API Key có khả dụng không)
-    let geminiLatency = "N/A";
-    let geminiStatus = "HEALTHY";
-    try {
-      const geminiStart = Date.now();
-      // Gọi thử request đơn giản hoặc check API key
-      if (process.env.GEMINI_API_KEY) {
-        geminiLatency = `${Date.now() - geminiStart + 45}ms`; // Ping nhẹ Gemini API
-      } else {
-        geminiStatus = "UNCONFIGURED";
+    let redisBackupLatency = "N/A";
+    let redisBackupStatus = "HEALTHY";
+    if (redisBackup) {
+      try {
+        const start = Date.now();
+        await redisBackup.ping();
+        redisBackupLatency = `${Date.now() - start}ms`;
+      } catch (error) {
+        redisBackupStatus = "DOWN";
       }
+    } else {
+      redisBackupStatus = "UNCONFIGURED";
+    }
+
+    // 3. Check Cloudinary Primary & Cloudinary Backup
+    let cloudPrimaryStatus = "HEALTHY";
+    let cloudPrimaryLatency = "N/A";
+    try {
+      const start = Date.now();
+      await cloudinaryPrimary.api.ping();
+      cloudPrimaryLatency = `${Date.now() - start}ms`;
     } catch (error) {
-      geminiStatus = "DOWN";
+      cloudPrimaryStatus = "DOWN";
+    }
+
+    let cloudBackupStatus = "HEALTHY";
+    let cloudBackupLatency = "N/A";
+    try {
+      const start = Date.now();
+      await cloudinaryBackup.api.ping();
+      cloudBackupLatency = `${Date.now() - start}ms`;
+    } catch (error) {
+      cloudBackupStatus = "DOWN";
+    }
+
+    // 4. Check Gemini AI Multi-Key API
+    let geminiPrimaryStatus = "HEALTHY";
+    let geminiPrimaryLatency = "N/A";
+    const primaryKey = process.env.GEMINI_API_KEY;
+
+    if (primaryKey) {
+      try {
+        const start = Date.now();
+        const genAI = new GoogleGenerativeAI(primaryKey);
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+        await model.countTokens("ping"); // Request đếm token siêu nhẹ để test ping
+        geminiPrimaryLatency = `${Date.now() - start}ms`;
+      } catch (error) {
+        geminiPrimaryStatus = "DOWN";
+      }
+    } else {
+      geminiPrimaryStatus = "UNCONFIGURED";
+    }
+
+    let geminiBackupStatus = "HEALTHY";
+    let geminiBackupLatency = "N/A";
+    const backupKey = process.env["GEMINI_API_KEY-BACKUP"];
+
+    if (backupKey) {
+      try {
+        const start = Date.now();
+        const genAI = new GoogleGenerativeAI(backupKey);
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+        await model.countTokens("ping");
+        geminiBackupLatency = `${Date.now() - start}ms`;
+      } catch (error) {
+        geminiBackupStatus = "DOWN";
+      }
+    } else {
+      geminiBackupStatus = "UNCONFIGURED";
     }
 
     return {
@@ -300,15 +408,48 @@ export class AdminService {
       database: {
         status: dbStatus,
         latencyMs: dbLatency,
+        provider: "PostgreSQL (Supabase)",
       },
       redis: {
-        status: redisStatus,
-        latencyMs: redisLatency,
+        primary: {
+          status: redisPrimaryStatus,
+          latencyMs: redisPrimaryLatency,
+          name: "Upstash Redis Primary",
+        },
+        backup: {
+          status: redisBackupStatus,
+          latencyMs: redisBackupLatency,
+          name: "Upstash Redis Backup",
+        },
+        activeProvider:
+          redisPrimaryStatus === "HEALTHY" ? "PRIMARY" : "BACKUP (Failover)",
+      },
+      cloudinary: {
+        primary: {
+          status: cloudPrimaryStatus,
+          latencyMs: cloudPrimaryLatency,
+          name: "Cloudinary Primary",
+        },
+        backup: {
+          status: cloudBackupStatus,
+          latencyMs: cloudBackupLatency,
+          name: "Cloudinary Backup",
+        },
+        activeProvider:
+          cloudPrimaryStatus === "HEALTHY" ? "PRIMARY" : "BACKUP (Failover)",
       },
       gemini: {
-        status: geminiStatus,
-        latencyMs: geminiLatency,
-        model: "gemini-1.5-flash",
+        primaryKey: {
+          status: geminiPrimaryStatus,
+          latencyMs: geminiPrimaryLatency,
+        },
+        backupKey: {
+          status: geminiBackupStatus,
+          latencyMs: geminiBackupLatency,
+        },
+        model: "gemini-2.5-flash",
+        activeKey:
+          geminiPrimaryStatus === "HEALTHY" ? "PRIMARY_KEY" : "BACKUP_KEY",
       },
       memory: {
         rss: `${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`,

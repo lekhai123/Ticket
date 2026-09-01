@@ -1,0 +1,19 @@
+config:
+  target: "http://localhost:3000"
+  phases:
+    # Giả lập 100 Virtual Users bắn request liên tục trong 5 giây (20 req/s)
+    - duration: 5
+      arrivalRate: 20
+scenarios:
+  - name: "Test Dat Ve Dong Thoi (Race Condition & Redis Lock)"
+    flow:
+      - post:
+          url: "/api/tickets/book"
+          headers:
+            Content-Type: "application/json"
+            # 🎯 Access Token thực tế của bạn đã được chèn vào đây:
+            Authorization: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6OSwidXNlcklkIjo5LCJlbWFpbCI6ImNucG0zNjM2QGdtYWlsLmNvbSIsInJvbGUiOiJDVVNUT01FUiIsImlhdCI6MTc4NTMzMjE2MCwiZXhwIjoxNzg1NDE4NTYwfQ.48zqT2zUW6KprGMAAgpXX4NueIqleHpcqgoGSeL4jaM"
+          json:
+            tripId: 1
+            seatNumbers: [15] # 100 User cùng lúc bấm tranh ghế A15 của chuyến tripId = 1
+            paymentMethod: "WALLET"

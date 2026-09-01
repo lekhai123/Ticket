@@ -214,16 +214,22 @@ export default function Profile() {
 
               const isMoreThanOneHourLeft =
                 departureTime - now > ONE_HOUR_IN_MS;
+
+              // 🎯 Chỉ cho phép hủy khi vé đang ở trạng thái CONFIRMED và còn trên 1 tiếng
               const canCancel =
                 ticket.status === "CONFIRMED" && isMoreThanOneHourLeft;
 
               return (
                 <div
                   key={ticket.id}
-                  className="border border-zinc-200 rounded-3xl p-6 bg-white shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4 dark:border-zinc-800 dark:bg-zinc-950"
+                  className={`border rounded-3xl p-6 bg-white shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4 dark:bg-zinc-950 transition-colors ${
+                    ticket.status === "REVOKED_BY_ADMIN"
+                      ? "border-red-200 dark:border-red-900/40 bg-red-50/20 dark:bg-red-950/10"
+                      : "border-zinc-200 dark:border-zinc-800"
+                  }`}
                 >
                   <div className="space-y-2">
-                    <div className="flex items-center gap-2 font-bold text-lg text-indigo-600">
+                    <div className="flex items-center gap-2 font-bold text-lg text-indigo-600 dark:text-indigo-400">
                       <MapPin className="h-5 w-5" />{" "}
                       {ticket.trip?.route || "Chuyến xe khách"}
                     </div>
@@ -236,6 +242,8 @@ export default function Profile() {
                         Ghế: A{ticket.seatNumber}
                       </span>
                     </div>
+
+                    {/* 🎯 HIỂN THỊ TRẠNG THÁI VÉ MỚI (Bổ sung REVOKED_BY_ADMIN) */}
                     <div className="text-xs font-semibold">
                       Trạng thái:{" "}
                       <span
@@ -244,23 +252,28 @@ export default function Profile() {
                             ? "text-emerald-500 font-bold"
                             : ticket.status === "CANCELED"
                               ? "text-amber-500 font-bold"
-                              : "text-red-500 font-bold"
+                              : ticket.status === "REVOKED_BY_ADMIN"
+                                ? "text-red-500 font-bold"
+                                : "text-zinc-500 font-bold"
                         }
                       >
                         {ticket.status === "CONFIRMED"
                           ? "Đã thanh toán"
                           : ticket.status === "CANCELED"
                             ? "Đã hủy vé (Hoàn tiền)"
-                            : ticket.status}
+                            : ticket.status === "REVOKED_BY_ADMIN"
+                              ? "Đã bị Admin thu hồi"
+                              : ticket.status}
                       </span>
                     </div>
                   </div>
 
                   <div className="flex flex-col items-end gap-2 w-full md:w-auto">
-                    <div className="text-xl font-bold text-indigo-600">
+                    <div className="text-xl font-bold text-indigo-600 dark:text-indigo-400">
                       {formatCurrency(ticket.trip?.price)}
                     </div>
 
+                    {/* 🎯 LOGIC NÚT HỦY VÉ HOẶC THÔNG BÁO VÉ THU HỒI */}
                     {canCancel ? (
                       <Button
                         variant="outline"
@@ -281,6 +294,10 @@ export default function Profile() {
                     ) : ticket.status === "CONFIRMED" ? (
                       <span className="text-xs text-zinc-400 font-medium italic bg-zinc-100 dark:bg-zinc-900 px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800">
                         Quá hạn hủy vé (&lt; 1h trước khởi hành)
+                      </span>
+                    ) : ticket.status === "REVOKED_BY_ADMIN" ? (
+                      <span className="text-xs text-red-500 font-medium italic bg-red-100/50 dark:bg-red-950/30 px-3 py-1.5 rounded-lg border border-red-200 dark:border-red-900/40">
+                        Vé đã bị thu hồi bởi Quản trị viên
                       </span>
                     ) : null}
                   </div>

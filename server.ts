@@ -6,6 +6,7 @@ import cors from "cors";
 // Imports Middlewares
 import { distributedTracing } from "./Middleware/tracingMiddleware"; // 👈 1. Import Tracing Middleware
 import { globalErrorHandler } from "./Middleware/errorMiddleware";
+import { initReconciliationCron } from "./jobs/reconciliationJob";
 
 // Imports Routes
 import otpRoutes from "./Router/otpRoutes";
@@ -59,7 +60,7 @@ app.use("/api/auth", authRoutes);
 app.use("api/bookings", bookingRoutes);
 // 4. Global Error Handler (Bắt buộc đặt DƯỚI CÙNG)
 app.use(globalErrorHandler);
-
+initReconciliationCron();
 app.listen(PORT, () => {
   console.log(`🚀 Server is running on port ${PORT}`);
 });

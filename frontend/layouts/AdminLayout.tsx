@@ -1,4 +1,11 @@
-import { Outlet, Navigate, Link, useLocation, useNavigate } from "react-router-dom";import { useAuthStore } from "../store/authStore";
+import {
+  Outlet,
+  Navigate,
+  Link,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
+import { useAuthStore } from "../store/authStore";
 import { useUiStore } from "../store/uiStore";
 import {
   LayoutDashboard,
@@ -7,6 +14,7 @@ import {
   RotateCcw,
   Activity,
   ClipboardList,
+  ShieldCheck, // 👈 1. Import thêm icon ShieldCheck
   Menu,
   Bell,
   LogOut,
@@ -19,6 +27,7 @@ export default function AdminLayout() {
   const { isSidebarOpen, toggleSidebar } = useUiStore();
   const location = useLocation();
   const navigate = useNavigate();
+
   // Route Guard: Bắt buộc login và phải là ADMIN
   if (!isAuthenticated) return <Navigate to="/auth/login" replace />;
   if (user?.role !== "ADMIN") return <Navigate to="/403" replace />;
@@ -26,6 +35,7 @@ export default function AdminLayout() {
   const displayName = (user as any)?.fullName || user?.name || "Admin";
   const avatarUrl = user?.avatarUrl || (user as any)?.avatar;
   const initialLetter = displayName.charAt(0).toUpperCase();
+
   const handleLogout = async () => {
     try {
       await authApi.logout(); // 1. Gọi API xóa cookie/token trên Server
@@ -36,7 +46,8 @@ export default function AdminLayout() {
       navigate("/auth/login"); // 3. Chuyển về trang đăng nhập
     }
   };
-  // 🎯 Danh sách Menu Điều Hướng Đầy Đủ
+
+  // 🎯 Danh sách Menu Điều Hướng Đầy Đủ (Đã bổ sung Đối Soát)
   const navItems = [
     {
       label: "Dashboard",
@@ -57,6 +68,11 @@ export default function AdminLayout() {
       label: "Thu hồi (Revoke)",
       path: "/admin/revoke",
       icon: RotateCcw,
+    },
+    {
+      label: "Đối soát tài chính", // 👈 2. Bổ sung mục Đối Soát
+      path: "/admin/reconciliation",
+      icon: ShieldCheck,
     },
     {
       label: "Lịch sử (Audit Log)",
@@ -100,7 +116,7 @@ export default function AdminLayout() {
         <nav className="flex-1 space-y-1.5 p-3 overflow-y-auto">
           {navItems.map((item) => {
             const Icon = item.icon;
-            // Kiếm tra route active (bao gồm cả trường hợp đường dẫn con)
+            // Kiểm tra route active (bao gồm cả trường hợp đường dẫn con)
             const isActive = location.pathname.startsWith(item.path);
 
             return (
@@ -128,7 +144,7 @@ export default function AdminLayout() {
         {/* Nút Đăng xuất */}
         <div className="p-3 border-t border-zinc-200 dark:border-zinc-800">
           <button
-            onClick={handleLogout} // 👈 GỌI HÀM VỪA TẠO Ở ĐÂY
+            onClick={handleLogout}
             className={cn(
               "flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30 transition-colors",
               !isSidebarOpen && "justify-center px-0",

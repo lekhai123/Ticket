@@ -23,6 +23,7 @@ model Wallets {
   id        Int      @id @default(autoincrement())
   userId    Int      @unique
   balance   Decimal  @default(0.00) @db.Decimal(12, 2)
+  isLocked  Boolean  @default(false)
   updatedAt DateTime @updatedAt
   user      Users    @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -105,4 +106,15 @@ model AuditLog {
   @@index([requestId])
   @@index([userId])
   @@index([batchId])
+  
+}
+
+model BlacklistedIPs {
+  id         Int      @id @default(autoincrement())
+  ipAddress  String   @unique
+  userId     Int?
+  reason     String
+  isResolved Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }

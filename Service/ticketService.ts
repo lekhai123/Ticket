@@ -151,11 +151,19 @@ export class TicketService {
   }
 
   static async getTicketsByUserId(userId: number) {
-    return await prisma.tickets.findMany({
-      where: { userId },
-      include: {
+    const tickets = await prisma.tickets.findMany({
+      where: {
+        userId,
+        // 🎯 Không filter status để lấy cả vé CONFIRMED, CANCELED lẫn REVOKED_BY_ADMIN
+      },
+      select: {
+        id: true,
+        seatNumber: true,
+        status: true, // 🎯 BẮT BUỘC có status để Frontend render đúng nhãn "Đã thu hồi"
+        createdAt: true,
         trip: {
           select: {
+            id: true,
             route: true,
             departureAt: true,
             price: true,
@@ -166,6 +174,17 @@ export class TicketService {
         createdAt: "desc",
       },
     });
+
+    // Convert Decimal sang number để Frontend nhận kiểu dữ liệu an toàn
+    return tickets.map((ticket) => ({
+      ...ticket,
+      trip: ticket.trip
+        ? {
+            ...ticket.trip,
+            price: Number(ticket.trip.price),
+          }
+        : null,
+    }));
   }
   static async cancelTicket(ticketId: number, userId: number) {
     // 1. Kiểm tra vé có tồn tại và thuộc về đúng User không

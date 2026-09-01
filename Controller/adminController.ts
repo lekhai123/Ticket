@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import { AdminService } from "../Service/adminService";
+import prisma from "../database/prismaClient";
 
 // Wrapper hứng error async tự động chuyển sang Express Error Middleware, KHÔNG cần viết try...catch
 const catchAsync =
@@ -101,3 +102,61 @@ export class AdminController {
     });
   });
 }
+export const unlockWallet = async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.params;
+
+    // 1. Validation kiểm tra userId
+    if (!userId || typeof userId !== "string") {
+      return res.status(400).json({
+        success: false,
+        message: "ID người dùng không hợp lệ!",
+      });
+    }
+
+    const numericUserId = Number(userId);
+    if (isNaN(numericUserId)) {
+      return res.status(400).json({
+        success: false,
+        message: "User ID phải là một số nguyên hợp lệ!",
+      });
+    }
+
+    // 2. Thực hiện Mở khóa ví & Ghi AuditLog trong 1 Transaction
+    await prisma.$transaction(async (tx) => {
+      // Cập nhật trạng thái ví
+      await tx.wallets.update({
+        where: { userId: numericUserId },
+        data: { isLocked: false },
+      });
+
+      // Ghi vết AuditLog (Dùng String(userId) hoặc String(numericUserId) để không bị lỗi Type)
+      await tx.auditLog.create({
+        data: {
+          requestId: `MANUAL-UNLOCK-${Date.now()}`,
+          userId: numericUserId,
+          action: "ADMIN_UNLOCK_WALLET",
+          resource: "Wallets",
+          resourceId: String(numericUserId), // 👈 Đã ép kiểu sang string chuẩn 100%
+          oldData: { isLocked: true },
+          newData: {
+            isLocked: false,
+            note: "Admin đã kiểm tra log và xác nhận mở khóa ví thủ công",
+          },
+          ipAddress: req.ip || "127.0.0.1",
+        },
+      });
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: `Đã mở khóa ví thành công cho User #${numericUserId}!`,
+    });
+  } catch (error: any) {
+    console.error("Lỗi khi mở khóa ví:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Không thể mở khóa ví!",
+    });
+  }
+};

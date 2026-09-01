@@ -88,15 +88,14 @@ export class WalletService {
     const limit = params.limit || 10;
     const skip = (page - 1) * limit;
 
-    // 1. Lấy thông tin ví (Nếu chưa có ví thì trả về mặc định balance = 0, KHÔNG throw error)
+    // 1. Lấy thông tin ví
     const wallet = await prisma.wallets.findUnique({
       where: { userId },
     });
 
     const walletIdStr = wallet ? String(wallet.id) : null;
-    const currentBalance = wallet ? wallet.balance : 0;
+    const currentBalance = wallet ? Number(wallet.balance) : 0;
 
-    // Nếu user chưa có ví thì chắc chắn chưa có giao dịch nào
     if (!walletIdStr) {
       return {
         currentBalance: 0,
@@ -110,10 +109,10 @@ export class WalletService {
       };
     }
 
-    // 2. Điều kiện Query linh hoạt: Lấy cả log do User tự thực hiện HOẶC log do Admin tác động lên Wallet này
+    // 2. Điều kiện Query linh hoạt: Đã cập nhật khớp 100% tên các Action mới
     const whereCondition = {
       OR: [
-        // TH1: Log do chính User này thực hiện
+        // TH1: Log gắn trực tiếp với userId của User này
         {
           userId: userId,
           action: {
@@ -122,19 +121,25 @@ export class WalletService {
               "BOOK_TICKET_PAYMENT",
               "CANCEL_TICKET_REFUND",
               "SYSTEM_GIFT_BALANCE",
+              "MASS_GIFT_RECEIVED", // 🎯 BỔ SUNG: Tiền quà tặng nhận từ Admin
+              "MASS_GIFT_REVOKED", // 🎯 BỔ SUNG: Tiền quà tặng bị thu hồi
+              "REFUND_TICKET_PAYMENT", // 🎯 BỔ SUNG: Hoàn tiền mua vé/thu hồi vé
             ],
           },
         },
-        // TH2: Log do Admin tác động lên ví của User này (Resource = Wallets, resourceId = wallet.id)
+        // TH2: Log do Admin tác động lên ví này (Resource = Wallets, resourceId = wallet.id)
         {
           resource: "Wallets",
           resourceId: walletIdStr,
           action: {
             in: [
               "MASS_GIFT_WALLET",
+              "MASS_GIFT_RECEIVED", // 🎯 BỔ SUNG
+              "MASS_GIFT_REVOKED", // 🎯 BỔ SUNG
               "REVOKE_MASS_GIFT",
               "REVOKE_BATCH",
               "ADMIN_ADJUST_BALANCE",
+              "REFUND_TICKET_PAYMENT",
             ],
           },
         },
