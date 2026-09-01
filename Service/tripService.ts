@@ -2,6 +2,7 @@
 import prisma from "../database/prismaClient";
 import { GoogleGenAI } from "@google/genai";
 import { MultiLevelCache } from "./cacheService"; // 👈 1. Import MultiLevelCache
+import { AIProxyService } from "./aiProxy.service"; // 👈 Import AIProxyService
 
 // Khởi tạo Google AI với API Key từ file .env
 const ai = new GoogleGenAI({
@@ -18,31 +19,7 @@ export class TripService {
    * Hàm helper để chuyển đổi văn bản thành Vector bằng Gemini
    */
   static async getEmbedding(text: string): Promise<number[]> {
-    const textInput = String(text).trim();
-
-    if (!textInput) {
-      throw new Error("Text input for embedding cannot be empty");
-    }
-
-    // Bọc textInput vào mảng Content/Part chuẩn để SDK không bị lỗi transformers tContents
-    const response = await ai.models.embedContent({
-      model: "gemini-embedding-2", // Hoặc "text-embedding-004"
-      contents: [
-        {
-          role: "user",
-          parts: [{ text: textInput }],
-        },
-      ],
-      config: {
-        outputDimensionality: 1536,
-      },
-    });
-
-    // Xử lý lấy mảng values an toàn từ response trả về
-    const embeddingValues = response.embeddings?.[0]?.values ?? [];
-    (response as any).embeddings?.[0]?.values ?? [];
-
-    return embeddingValues;
+    return await AIProxyService.getEmbeddingWithFallback(text);
   }
   static async createTripLogic(
     route: string,
