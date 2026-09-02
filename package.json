@@ -5,8 +5,8 @@
   "main": "server.ts",
   "type": "module",
   "scripts": {
-    "dev": "tsx server.ts",
-    "build:be": "tsup server.ts --out-dir api --format esm --entry.index=server.ts",
+    "dev": "tsx api/index.ts",
+    "build:be": "tsup api/index.ts --out-dir api --format esm --no-splitting",
     "vercel-build": "prisma generate && npm run build:be && cd frontend && npm install && npm run build"
   },
   "dependencies": {
