@@ -186,6 +186,7 @@ export class TripService {
     const safePrompt = typeof prompt === "string" ? prompt : "";
     const cleanPrompt = safePrompt.trim().toLowerCase();
 
+    // 1. Nếu không nhập gì hoặc yêu cầu xem hết
     if (
       !cleanPrompt ||
       cleanPrompt.includes("tất cả") ||
@@ -195,21 +196,53 @@ export class TripService {
       return await this.getAllTripsLogic();
     }
 
+    // 2. BƯỚC 1: Tìm kiếm chính xác / gần đúng theo Text (ILIKE) trước
+    // Giúp các từ khóa cụ thể như "Đà Nẵng", "Hải Phòng", "Nha Trang" lọc chính xác 100%
+    const keywordTrips = await prisma.trips.findMany({
+      where: {
+        departureAt: { gt: new Date() },
+        OR: [
+          { route: { contains: cleanPrompt, mode: "insensitive" } },
+          { description: { contains: cleanPrompt, mode: "insensitive" } },
+        ],
+      },
+      take: limit,
+      orderBy: { departureAt: "asc" },
+      include: {
+        tickets: {
+          where: { status: { in: ["HELD", "PENDING", "CONFIRMED"] } },
+          select: { seatNumber: true },
+        },
+      },
+    });
+
+    // Nếu tìm thấy theo từ khóa địa danh, trả về ngay (không bị dính chuyến xe khác)
+    if (keywordTrips.length > 0) {
+      return keywordTrips.map((trip) => this.formatTripWithSeats(trip));
+    }
+
+    // 3. BƯỚC 2: Nếu người dùng nhập câu tự nhiên ("tìm xe đi sáng mai giá rẻ") -> Dùng Semantic Search
     const queryVector = await this.getEmbedding(cleanPrompt);
     const vectorString = `[${queryVector.join(",")}]`;
 
-    // Thêm điều kiện departureAt > NOW() vào câu raw query
+    // 🎯 NÂNG NGƯỠNG LÊN 0.70 (Tránh bắt nhầm các địa danh không liên quan)
+    const SIMILARITY_THRESHOLD = 0.7;
+
     const trips: any[] = await prisma.$queryRaw`
     SELECT id, route, "departureAt", price, "totalSeats", description,
            1 - (embedding <=> ${vectorString}::vector) AS similarity
     FROM "Trips"
     WHERE "departureAt" > NOW()
-      AND 1 - (embedding <=> ${vectorString}::vector) > 0.55
+      AND 1 - (embedding <=> ${vectorString}::vector) > ${SIMILARITY_THRESHOLD}
     ORDER BY similarity DESC
     LIMIT ${limit};
   `;
 
-    // Format số ghế còn trống thực tế cho các chuyến search ra
+    if (!trips || trips.length === 0) {
+      return []; // Trả về rỗng thay vì hiện bừa chuyến Hà Nội - Hải Phòng
+    }
+
+    // Bổ sung số ghế thực tế cho các chuyến tìm được
     const tripIds = trips.map((t) => t.id);
     const activeTickets = await prisma.tickets.findMany({
       where: {
