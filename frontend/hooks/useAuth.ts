@@ -11,6 +11,10 @@ import type {
 
 import type { AuthResponse } from "../types/index";
 
+// 🔒 CỜ TOÀN CỤC: Đảm bảo chỉ khởi tạo duy nhất 1 lần trong suốt vòng đời ứng dụng
+let isAuthInitialized = false;
+let authInitPromise: Promise<void> | null = null;
+
 export const useAuth = () => {
   const queryClient = useQueryClient();
 
@@ -19,7 +23,8 @@ export const useAuth = () => {
   const user = useAuthStore((s) => s.user);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
 
-  const [isInitializing, setIsInitializing] = useState(true);
+  // Nếu đã khởi tạo rồi thì không cần loading nữa
+  const [isInitializing, setIsInitializing] = useState(!isAuthInitialized);
   const [otpCooldown, setOtpCooldown] = useState(0);
 
   useEffect(() => {
@@ -35,14 +40,26 @@ export const useAuth = () => {
   }, []);
 
   useEffect(() => {
+    // Nếu đã chạy rồi thì bỏ qua hoàn toàn, không gọi lại khi chuyển trang
+    if (isAuthInitialized) {
+      setIsInitializing(false);
+      return;
+    }
+
     const init = async () => {
       try {
-        // authService.refreshToken() đã trả về trực tiếp AuthResponse
-        const res: AuthResponse = await authService.refreshToken();
-        setAuth(res.user, res.accessToken);
+        // Gom request nếu nhiều component cùng gọi useAuth lần đầu
+        if (!authInitPromise) {
+          authInitPromise = (async () => {
+            const res: AuthResponse = await authService.refreshToken();
+            setAuth(res.user, res.accessToken);
+          })();
+        }
+        await authInitPromise;
       } catch {
         logoutStore();
       } finally {
+        isAuthInitialized = true;
         setIsInitializing(false);
       }
     };
