@@ -1,6 +1,6 @@
 // FILE: Middleware/tracingMiddleware.ts
 import type { Request, Response, NextFunction } from "express";
-import { v4 as uuidv4 } from "uuid";
+import crypto from "crypto"; // 👈 Thêm thư viện crypto gốc của Node.js
 
 declare global {
   namespace Express {
@@ -15,8 +15,9 @@ export const distributedTracing = (
   res: Response,
   next: NextFunction,
 ): void => {
-  // Lấy requestId từ Gateway truyền sang hoặc tự sinh mới
-  const requestId = (req.headers["x-request-id"] as string) || uuidv4();
+  // Lấy requestId từ Gateway truyền sang hoặc tự sinh mới bằng crypto gốc
+  const requestId =
+    (req.headers["x-request-id"] as string) || crypto.randomUUID(); // 👈 Thay uuidv4()
   req.requestId = requestId;
   res.setHeader("X-Request-ID", requestId); // Trả về client để đối soát khi có sự cố
   next();
