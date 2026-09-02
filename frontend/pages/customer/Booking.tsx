@@ -1,4 +1,5 @@
-import { useState } from "react";
+// FILE: pages/customer/Booking.tsx
+import { useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bus, Wallet, AlertCircle, Lock, LockKeyhole } from "lucide-react";
@@ -22,6 +23,8 @@ export default function Booking() {
     message: string;
   }>({ isOpen: false, message: "" });
 
+  const [selectedSeats, setSelectedSeats] = useState<number[]>([]);
+
   // 1. Fetch chuyến xe thực tế theo ID
   const { data: trip, isLoading: isTripLoading } = useQuery({
     queryKey: ["trip", id],
@@ -36,28 +39,55 @@ export default function Booking() {
   const { balance, isLoadingBalance } = useWallet(user?.id || 0);
   const { bookTicket, isBooking } = useTicket();
 
-  const [selectedSeats, setSelectedSeats] = useState<number[]>([]);
-
   // Bóc tách tên tuyến xe
   const [origin, destination] = trip?.route
     ? trip.route.split(" - ")
-    : [trip?.origin || "--", trip?.destination || "--"];
+    : [(trip as any)?.origin || "--", (trip as any)?.destination || "--"];
 
-  // Render danh sách 30 ghế xe từ Backend
-  const bookedSeatNumbers: number[] =
-    trip?.tickets
-      ?.filter((t: any) => ["HELD", "PENDING", "CONFIRMED"].includes(t.status))
-      .map((t: any) => Number(t.seatNumber)) || [];
+  // 3. Xử lý logic ghế ngồi động theo dữ liệu Backend
+  const totalSeats = Number(trip?.totalSeats) || 30;
 
-  const seatsFloor1 = Array.from({ length: 15 }, (_, i) => ({
-    seatNumber: i + 1,
-    isBooked: bookedSeatNumbers.includes(i + 1),
-  }));
+  const bookedSeatNumbers: number[] = useMemo(() => {
+    if (trip?.bookedSeatNumbers && Array.isArray(trip.bookedSeatNumbers)) {
+      return trip.bookedSeatNumbers.map(Number);
+    }
+    // Fallback nếu backend trả về mảng tickets nguyên thủy
+    return (
+      trip?.tickets
+        ?.filter((t: any) =>
+          ["HELD", "PENDING", "CONFIRMED"].includes(t.status),
+        )
+        .map((t: any) => Number(t.seatNumber)) || []
+    );
+  }, [trip]);
 
-  const seatsFloor2 = Array.from({ length: 15 }, (_, i) => ({
-    seatNumber: i + 16,
-    isBooked: bookedSeatNumbers.includes(i + 16),
-  }));
+  // Chia 2 tầng động theo tổng số ghế
+  const halfSeats = Math.ceil(totalSeats / 2);
+
+  const seatsFloor1 = useMemo(() => {
+    return Array.from({ length: halfSeats }, (_, i) => {
+      const seatNum = i + 1;
+      return {
+        seatNumber: seatNum,
+        isBooked: bookedSeatNumbers.includes(seatNum),
+      };
+    });
+  }, [halfSeats, bookedSeatNumbers]);
+
+  const seatsFloor2 = useMemo(() => {
+    return Array.from({ length: totalSeats - halfSeats }, (_, i) => {
+      const seatNum = halfSeats + i + 1;
+      return {
+        seatNumber: seatNum,
+        isBooked: bookedSeatNumbers.includes(seatNum),
+      };
+    });
+  }, [totalSeats, halfSeats, bookedSeatNumbers]);
+
+  const availableSeatsCount = Math.max(
+    0,
+    totalSeats - bookedSeatNumbers.length,
+  );
 
   const handleToggleSeat = (seatNum: number, isBooked: boolean) => {
     if (isBooked) return;
@@ -72,12 +102,12 @@ export default function Booking() {
   const totalPrice = selectedSeats.length * unitPrice;
   const rawBalance = Number(balance?.raw || 0);
 
-  // 🎯 KIỂM TRA ĐIỀU KIỆN VÍ: Âm tiền hoặc Bị Khóa
+  // Kiểm tra điều kiện ví: Âm tiền hoặc Bị Khóa
   const isWalletLocked = Boolean((balance as any)?.isLocked);
   const isDebt = rawBalance < 0;
   const canAfford = rawBalance >= totalPrice && !isWalletLocked && !isDebt;
 
-  // 3. Xử lý đặt vé
+  // 4. Xử lý đặt vé
   const handleConfirmBooking = async () => {
     if (!canAfford || selectedSeats.length === 0 || !id) return;
 
@@ -88,7 +118,7 @@ export default function Booking() {
         paymentMethod: "WALLET",
       } as any);
 
-      // Xóa cache để làm tươi sơ đồ ghế & Ví
+      // Làm tươi lại cache ghế và số dư ví
       queryClient.invalidateQueries({ queryKey: ["trip", id] });
       queryClient.invalidateQueries({ queryKey: ["wallet"] });
 
@@ -97,7 +127,6 @@ export default function Booking() {
     } catch (err: any) {
       const errResponse = err.response?.data;
 
-      // 🚨 BẮT LỖI KHI VÍ BỊ KHÓA HOẶC ÂM TIỀN TỪ BACKEND (Status 403 / WALLET_LOCKED_OR_DEBT)
       if (
         err.response?.status === 403 ||
         errResponse?.code === "WALLET_LOCKED_OR_DEBT"
@@ -115,37 +144,68 @@ export default function Booking() {
     }
   };
 
-  if (isTripLoading)
+  if (isTripLoading) {
     return (
       <div className="h-screen flex items-center justify-center">
         <div className="animate-spin h-8 w-8 border-4 border-indigo-500 border-t-transparent rounded-full" />
       </div>
     );
+  }
 
   return (
     <div className="max-w-6xl mx-auto py-10 px-4 grid grid-cols-1 lg:grid-cols-3 gap-8">
-      {/* Sơ đồ 30 ghế xe khách */}
-      <div className="col-span-1 lg:col-span-2 space-y-8">
-        <h2 className="text-2xl font-bold flex items-center gap-2">
-          <Bus className="h-6 w-6 text-indigo-500" /> Sơ đồ chọn ghế (Xe 30 chỗ)
-        </h2>
+      {/* Cột trái: Sơ đồ ghế co giãn động */}
+      <div className="col-span-1 lg:col-span-2 space-y-6">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <h2 className="text-2xl font-bold flex items-center gap-2">
+            <Bus className="h-6 w-6 text-indigo-500" /> Sơ đồ chọn ghế (Xe{" "}
+            {totalSeats} chỗ)
+          </h2>
+          <span
+            className={cn(
+              "text-xs font-semibold px-3 py-1 rounded-full border",
+              availableSeatsCount === 0
+                ? "bg-rose-500/10 text-rose-500 border-rose-500/20"
+                : "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
+            )}
+          >
+            Còn trống: {availableSeatsCount} / {totalSeats} chỗ
+          </span>
+        </div>
+
         <div className="flex gap-8 overflow-x-auto pb-4 custom-scrollbar">
           <SeatFloor
-            title="Tầng Dưới (Ghế 1 - 15)"
+            title={`Tầng Dưới (Ghế 1 - ${halfSeats})`}
             seats={seatsFloor1}
             selected={selectedSeats}
             onSelect={handleToggleSeat}
           />
           <SeatFloor
-            title="Tầng Trên (Ghế 16 - 30)"
+            title={`Tầng Trên (Ghế ${halfSeats + 1} - ${totalSeats})`}
             seats={seatsFloor2}
             selected={selectedSeats}
             onSelect={handleToggleSeat}
           />
         </div>
+
+        {/* Chú thích màu sắc */}
+        <div className="flex items-center gap-6 pt-2 text-xs text-zinc-500">
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 rounded border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950" />
+            <span>Ghế trống</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 rounded bg-indigo-600 border border-indigo-500" />
+            <span>Đang chọn</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 rounded bg-zinc-200 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-800" />
+            <span>Đã đặt</span>
+          </div>
+        </div>
       </div>
 
-      {/* Box Thanh Toán & Ví */}
+      {/* Cột phải: Box Thanh Toán & Ví */}
       <div className="relative">
         <div className="sticky top-24 rounded-3xl border border-zinc-200 bg-white p-6 shadow-xl dark:border-zinc-800 dark:bg-zinc-950">
           <h3 className="text-xl font-semibold mb-6 border-b border-zinc-100 pb-4 dark:border-zinc-800">
@@ -157,6 +217,12 @@ export default function Booking() {
               <span>Tuyến đi:</span>
               <span className="font-medium text-zinc-900 dark:text-white">
                 {origin} ➔ {destination}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span>Đơn giá:</span>
+              <span className="font-medium text-zinc-900 dark:text-white">
+                {formatCurrency(unitPrice)} / vé
               </span>
             </div>
             <div className="flex justify-between">
@@ -175,7 +241,7 @@ export default function Booking() {
             </div>
           </div>
 
-          {/* BOX CẢNH BÁO SỐ DƯ VÍ & TRẠNG THÁI KHÓA VÍ */}
+          {/* Box Cảnh báo số dư ví & trạng thái ví */}
           <div
             className={cn(
               "rounded-xl p-4 mb-6 transition-all",
@@ -209,7 +275,6 @@ export default function Booking() {
               {isLoadingBalance ? "..." : formatCurrency(rawBalance)}
             </div>
 
-            {/* Cảnh báo chi tiết lý do không thể mua */}
             {isWalletLocked ? (
               <p className="text-red-600 text-xs mt-2 flex items-start gap-1 font-medium">
                 <Lock className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" /> Ví bị khóa
@@ -248,7 +313,7 @@ export default function Booking() {
         </div>
       </div>
 
-      {/* 🚨 MODAL THÔNG BÁO VÍ BỊ KHÓA / NỢ TIỀN */}
+      {/* Modal thông báo ví bị khóa / Nợ tiền */}
       {lockedWalletModal.isOpen && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white dark:bg-zinc-900 rounded-2xl w-full max-w-md p-6 shadow-2xl border border-red-500/30 text-center space-y-4 animate-in fade-in zoom-in duration-200">
@@ -266,6 +331,7 @@ export default function Booking() {
 
             <div className="pt-2 flex gap-3">
               <button
+                type="button"
                 onClick={() =>
                   setLockedWalletModal({ isOpen: false, message: "" })
                 }
@@ -274,6 +340,7 @@ export default function Booking() {
                 Đóng
               </button>
               <button
+                type="button"
                 onClick={() => navigate("/customer/wallet/topup")}
                 className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-all shadow-md"
               >
@@ -315,7 +382,7 @@ function SeatFloor({
               className={cn(
                 "h-14 rounded-xl border-2 flex flex-col items-center justify-center text-xs font-bold transition-all",
                 seat.isBooked
-                  ? "bg-zinc-200 border-zinc-200 text-zinc-400 cursor-not-allowed dark:bg-zinc-800 dark:border-zinc-800"
+                  ? "bg-zinc-200 border-zinc-200 text-zinc-400 cursor-not-allowed dark:bg-zinc-800 dark:border-zinc-800 dark:text-zinc-600"
                   : isSelected
                     ? "bg-indigo-600 border-indigo-600 text-white shadow-lg scale-105"
                     : "bg-white border-zinc-300 hover:border-indigo-400 text-zinc-800 dark:bg-zinc-950 dark:border-zinc-700 dark:text-zinc-200",

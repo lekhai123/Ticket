@@ -39,10 +39,15 @@ export interface User {
   balance: number;
   totalSpent: number;
   status: UserStatus;
-  
   createdAt: string;
   updatedAt: string;
 }
+
+export interface AuthResponse {
+  accessToken: string;
+  user: User;
+}
+
 export interface AuthResponseData {
   user: User;
   token: string;
@@ -92,13 +97,13 @@ export interface UserFilterParams {
 }
 
 // ==========================================
-// 3. TRIP & BOOKING TYPES
+// 3. TRIP & BOOKING TYPES (CHUẨN HÓA DUY NHẤT)
 // ==========================================
 
 export type TripStatus = "SCHEDULED" | "ONGOING" | "COMPLETED" | "CANCELED";
 
 export interface Seat {
-  id: string; // VD: "A1", "B5"
+  id: string;
   code: string;
   floor: "A" | "B";
   isBooked: boolean;
@@ -106,22 +111,28 @@ export interface Seat {
 }
 
 export interface Trip {
-  id: string;
-  origin: string;
-  destination: string;
-  departureTime: string; // ISO String
-  arrivalTime: string; // ISO String
+  id: number;
+  route: string;
+  description?: string | null;
+  departureAt: string;
   price: number;
-  availableSeats: number;
   totalSeats: number;
-  status: TripStatus;
-  description?: string;
+  availableSeats: number;
+  bookedSeatNumbers: number[]; // Mảng các ghế đã có người giữ/mua
+  status?: TripStatus;
+  tickets?: Array<{
+    seatNumber: number;
+    status: string;
+  }>;
+  similarity?: number;
+  origin?: string;
+  destination?: string;
+  departureTime?: string;
+  arrivalTime?: string;
   busType?: string;
   seats?: Seat[];
-  createdAt: string;
-  updatedAt: string;
-  route?: string; // 👈 Bổ sung thuộc tính này
-  tickets?: Ticket[]; // 👈 Bổ sung mảng vé đi kèm
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface TripSearchParams {
@@ -140,14 +151,12 @@ export interface SemanticSearchPayload {
 }
 
 export interface CreateTripPayload {
-  origin: string;
-  destination: string;
-  departureTime: string;
-  arrivalTime: string;
+  route: string;
+  description?: string;
+  departureAt: string;
   price: number;
   totalSeats: number;
   busType?: string;
-  description?: string;
 }
 
 export interface UpdateTripPayload extends Partial<CreateTripPayload> {
@@ -175,8 +184,10 @@ export interface Ticket {
 }
 
 export interface BookTicketPayload {
-  tripId: string;
-  seatIds: string[];
+  tripId: string | number;
+  seatIds?: string[];
+  seatNumbers?: number[];
+  paymentMethod?: "WALLET" | "CASH" | "VNPAY";
   voucherCode?: string;
 }
 
@@ -223,7 +234,7 @@ export interface TopUpPayload {
 
 export interface AdjustWalletPayload {
   userId: number;
-  amount: number; // Dương là cộng, Âm là trừ
+  amount: number;
   reason: string;
   batchId?: string;
 }
@@ -313,7 +324,7 @@ export type GiftType = "MONEY" | "VOUCHER";
 
 export interface MassGiftPayload {
   targetType: TargetType;
-  targetId?: string; // Dùng khi targetType === 'SINGLE' hoặc 'GROUP'
+  targetId?: string;
   giftType: GiftType;
   amount: number;
   voucherCode?: string;
@@ -351,7 +362,7 @@ export interface ReconciliationSummary {
 export interface ServiceHealthItem {
   name: string;
   status: "operational" | "degraded" | "outage";
-  latency: number; // in milliseconds
+  latency: number;
   message?: string;
 }
 
@@ -378,11 +389,7 @@ export interface BannerAnnouncement {
   id: string;
   message: string;
   priority: "info" | "warning" | "urgent";
-  duration?: number; // Mặc định 5000ms
+  duration?: number;
   isActive: boolean;
   createdAt: string;
-}
-export interface AuthResponse {
-  accessToken: string;
-  user: User;
 }

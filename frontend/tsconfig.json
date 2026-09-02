@@ -5,6 +5,7 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "skipLibCheck": true,
+    "types": ["vite/client"], // 👈 THÊM DÒNG NÀY ĐỂ NHẬN import.meta.env
 
     /* Bundler mode */
     "moduleResolution": "bundler",
@@ -26,6 +27,17 @@
     "noFallthroughCasesInSwitch": true,
     "exactOptionalPropertyTypes": false
   },
-  "include": ["src"],
+  "include": [
+    "src",
+    "api",
+    "types",
+    "hooks",
+    "pages",
+    "components",
+    "services",
+    "store",
+    "utils",
+    "vite-env.d.ts"
+  ],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

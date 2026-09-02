@@ -1,26 +1,32 @@
 // FILE: Service/tripService.ts
 import prisma from "../database/prismaClient";
-import { GoogleGenAI } from "@google/genai";
-import { MultiLevelCache } from "./cacheService"; // 👈 1. Import MultiLevelCache
-import { AIProxyService } from "./aiProxy.service"; // 👈 Import AIProxyService
-
-// Khởi tạo Google AI với API Key từ file .env
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY!,
-});
+import { MultiLevelCache } from "./cacheService";
+import { AIProxyService } from "./aiProxy.service";
 
 export class TripService {
-  /**
-   * Key dùng chung cho Cache danh sách chuyến xe
-   */
   private static CACHE_KEY_ALL_TRIPS = "trips:all";
 
-  /**
-   * Hàm helper để chuyển đổi văn bản thành Vector bằng Gemini
-   */
   static async getEmbedding(text: string): Promise<number[]> {
     return await AIProxyService.getEmbeddingWithFallback(text);
   }
+
+  /**
+   * Helper: Chuẩn hóa dữ liệu chuyến xe kèm số ghế thực tế
+   */
+  private static formatTripWithSeats(trip: any) {
+    const activeTickets = trip.tickets || [];
+    const bookedSeatNumbers = activeTickets.map((t: any) => t.seatNumber);
+    const totalSeats = trip.totalSeats ?? 30;
+    const availableSeats = Math.max(0, totalSeats - bookedSeatNumbers.length);
+
+    return {
+      ...trip,
+      totalSeats,
+      availableSeats,
+      bookedSeatNumbers, // Danh sách các số ghế đã có người giữ/mua
+    };
+  }
+
   static async createTripLogic(
     route: string,
     description: string | undefined,
@@ -30,7 +36,7 @@ export class TripService {
   ) {
     const trimmedRoute = route.trim();
     const trimmedDesc = description ? description.trim() : "";
-    const finalSeats = totalSeats ?? 30;
+    const finalSeats = totalSeats && totalSeats > 0 ? totalSeats : 30;
     const textToEmbed = `Chuyến xe tuyến ${trimmedRoute}. Chi tiết mô tả: ${trimmedDesc}`;
     const vector = await this.getEmbedding(textToEmbed);
     const vectorString = `[${vector.join(",")}]`;
@@ -51,40 +57,32 @@ export class TripService {
       orderBy: { id: "desc" },
     });
 
-    // 🌟 INVALIDATE CACHE: Xóa cache danh sách cũ để lần GET sau đọc data mới nhất
     await MultiLevelCache.invalidate(this.CACHE_KEY_ALL_TRIPS);
-
     return createdTrip;
   }
 
-  /**
-   * Lấy danh sách toàn bộ chuyến xe (Đã tích hợp Multi-Level Cache)
-   */
   static async getAllTripsLogic() {
-    // 🌟 BƯỚC 1: Đọc từ Cache (RAM / Redis) trước
     const cachedTrips = await MultiLevelCache.get(this.CACHE_KEY_ALL_TRIPS);
-    if (cachedTrips) {
-      // Cache Hit -> Phản hồi siêu tốc (< 5ms)
-      return cachedTrips;
-    }
+    if (cachedTrips) return cachedTrips;
 
-    // 🌟 BƯỚC 2: Cache Miss -> Mới query Database
     const trips = await prisma.trips.findMany({
       orderBy: { departureAt: "asc" },
+      include: {
+        tickets: {
+          where: { status: { in: ["HELD", "PENDING", "CONFIRMED"] } },
+          select: { seatNumber: true },
+        },
+      },
     });
 
-    // 🌟 BƯỚC 3: Lưu vào Multi-Level Cache trong 300 giây (5 phút)
-    await MultiLevelCache.set(this.CACHE_KEY_ALL_TRIPS, trips, 300);
-
-    return trips;
+    const formattedTrips = trips.map((trip) => this.formatTripWithSeats(trip));
+    // Cache 30 giây để cập nhật số ghế nhanh hơn thay vì 300s
+    await MultiLevelCache.set(this.CACHE_KEY_ALL_TRIPS, formattedTrips, 30);
+    return formattedTrips;
   }
 
-  /**
-   * Lấy chi tiết 1 chuyến xe (Cũng được cache theo ID)
-   */
   static async getTripByIdLogic(id: number) {
     const cacheKey = `trips:detail:${id}`;
-
     const cachedTrip = await MultiLevelCache.get(cacheKey);
     if (cachedTrip) return cachedTrip;
 
@@ -92,22 +90,20 @@ export class TripService {
       where: { id: Number(id) },
       include: {
         tickets: {
-          where: {
-            status: { in: ["HELD", "PENDING", "CONFIRMED"] }, // Lấy danh sách vé đang có chủ
-          },
+          where: { status: { in: ["HELD", "PENDING", "CONFIRMED"] } },
+          select: { seatNumber: true, status: true },
         },
       },
     });
-    if (trip) {
-      await MultiLevelCache.set(cacheKey, trip, 300);
-    }
 
-    return trip;
+    if (!trip) return null;
+
+    const formatted = this.formatTripWithSeats(trip);
+    // Cache ngắn 10 giây cho chi tiết đặt vé tránh tình trạng giữ ghế bị stale
+    await MultiLevelCache.set(cacheKey, formatted, 10);
+    return formatted;
   }
 
-  /**
-   * Cập nhật thông tin chuyến xe
-   */
   static async updateTripLogic(
     id: number,
     data: {
@@ -132,10 +128,15 @@ export class TripService {
     const updatedTrip = await prisma.trips.update({
       where: { id },
       data: {
-        ...data,
         ...(data.route && { route: data.route.trim() }),
-        ...(data.description && { description: data.description.trim() }),
+        ...(data.description !== undefined && {
+          description: data.description ? data.description.trim() : null,
+        }),
         ...(data.departureAt && { departureAt: new Date(data.departureAt) }),
+        ...(data.price !== undefined && { price: Number(data.price) }),
+        ...(data.totalSeats !== undefined && {
+          totalSeats: Number(data.totalSeats),
+        }),
       },
     });
 
@@ -151,22 +152,28 @@ export class TripService {
       );
     }
 
-    // 🌟 INVALIDATE CACHE: Xóa cache danh sách & cache chi tiết của item này
     await MultiLevelCache.invalidate(this.CACHE_KEY_ALL_TRIPS);
     await MultiLevelCache.invalidate(`trips:detail:${id}`);
 
     return updatedTrip;
   }
 
-  /**
-   * Xóa chuyến xe
-   */
   static async deleteTripLogic(id: number) {
-    const deletedTrip = await prisma.trips.delete({
-      where: { id },
+    // Kiểm tra nếu chuyến đã có người đặt vé thành công thì chặn xoá
+    const hasTickets = await prisma.tickets.findFirst({
+      where: { tripId: id, status: "CONFIRMED" },
     });
+    if (hasTickets) {
+      throw new Error(
+        "Không thể xoá chuyến xe đã có vé thanh toán thành công!",
+      );
+    }
 
-    // 🌟 INVALIDATE CACHE: Xóa cache khi có dữ liệu bị xóa
+    // Xoá các vé nháp/hết hạn trước nếu có ràng buộc khoá ngoại
+    await prisma.tickets.deleteMany({ where: { tripId: id } });
+
+    const deletedTrip = await prisma.trips.delete({ where: { id } });
+
     await MultiLevelCache.invalidate(this.CACHE_KEY_ALL_TRIPS);
     await MultiLevelCache.invalidate(`trips:detail:${id}`);
 
@@ -174,11 +181,9 @@ export class TripService {
   }
 
   static async searchTripsSemanticLogic(prompt: string = "", limit = 5) {
-    // Phòng thủ tuyệt đối: Đảm bảo prompt luôn là kiểu string
     const safePrompt = typeof prompt === "string" ? prompt : "";
     const cleanPrompt = safePrompt.trim().toLowerCase();
 
-    // 1. Nếu prompt rỗng hoặc muốn lấy tất cả
     const isGetAll =
       !cleanPrompt ||
       cleanPrompt.includes("tất cả") ||
@@ -186,24 +191,20 @@ export class TripService {
       cleanPrompt.includes("mặc định");
 
     if (isGetAll) {
-      return await prisma.trips.findMany({
-        take: limit,
-        orderBy: { departureAt: "asc" },
-      });
+      return await this.getAllTripsLogic();
     }
 
-    // 2. Gọi Embedding & PGVector
     const queryVector = await this.getEmbedding(cleanPrompt);
     const vectorString = `[${queryVector.join(",")}]`;
 
-    const trips = await prisma.$queryRaw`
-    SELECT id, route, "departureAt", price, "totalSeats", description,
-           1 - (embedding <=> ${vectorString}::vector) AS similarity
-    FROM "Trips"
-    WHERE 1 - (embedding <=> ${vectorString}::vector) > 0.65
-    ORDER BY similarity DESC
-    LIMIT ${limit};
-  `;
+    const trips: any[] = await prisma.$queryRaw`
+      SELECT id, route, "departureAt", price, "totalSeats", description,
+             1 - (embedding <=> ${vectorString}::vector) AS similarity
+      FROM "Trips"
+      WHERE 1 - (embedding <=> ${vectorString}::vector) > 0.65
+      ORDER BY similarity DESC
+      LIMIT ${limit};
+    `;
 
     return trips;
   }
