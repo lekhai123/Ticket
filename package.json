@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "description": "Backend API Server",
   "main": "server.ts",
-  "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
     "build:be": "tsup server.ts --out-dir dist-api --format esm --no-splitting",
