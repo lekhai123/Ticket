@@ -9,12 +9,13 @@ import { useAuthStore } from "../store/authStore";
 import { useUiStore } from "../store/uiStore";
 import {
   LayoutDashboard,
+  Bus, // 👈 1. Import thêm icon Bus
   Users,
   Gift,
   RotateCcw,
   Activity,
   ClipboardList,
-  ShieldCheck, // 👈 1. Import thêm icon ShieldCheck
+  ShieldCheck,
   Menu,
   Bell,
   LogOut,
@@ -38,21 +39,26 @@ export default function AdminLayout() {
 
   const handleLogout = async () => {
     try {
-      await authApi.logout(); // 1. Gọi API xóa cookie/token trên Server
+      await authApi.logout();
     } catch (error) {
       console.error("Lỗi khi đăng xuất:", error);
     } finally {
-      logout(); // 2. Xóa store Zustand local
-      navigate("/auth/login"); // 3. Chuyển về trang đăng nhập
+      logout();
+      navigate("/auth/login");
     }
   };
 
-  // 🎯 Danh sách Menu Điều Hướng Đầy Đủ (Đã bổ sung Đối Soát)
+  // 🎯 Danh sách Menu Điều Hướng (Đã bổ sung Quản lý Chuyến xe)
   const navItems = [
     {
       label: "Dashboard",
       path: "/admin/dashboard",
       icon: LayoutDashboard,
+    },
+    {
+      label: "Quản lý Chuyến xe", // 👈 2. Mục Quản lý Chuyến xe mới
+      path: "/admin/trips",
+      icon: Bus,
     },
     {
       label: "Quản lý Users",
@@ -70,7 +76,7 @@ export default function AdminLayout() {
       icon: RotateCcw,
     },
     {
-      label: "Đối soát tài chính", // 👈 2. Bổ sung mục Đối Soát
+      label: "Đối soát tài chính",
       path: "/admin/reconciliation",
       icon: ShieldCheck,
     },
@@ -116,7 +122,6 @@ export default function AdminLayout() {
         <nav className="flex-1 space-y-1.5 p-3 overflow-y-auto">
           {navItems.map((item) => {
             const Icon = item.icon;
-            // Kiểm tra route active (bao gồm cả trường hợp đường dẫn con)
             const isActive = location.pathname.startsWith(item.path);
 
             return (
@@ -200,7 +205,6 @@ export default function AdminLayout() {
         {/* Dynamic Pages */}
         <main className="flex-1 overflow-y-auto p-6">
           <div className="mx-auto max-w-7xl">
-            {/* TẤT CẢ TRANG CON SẼ RENDER VÀO ĐÂY */}
             <Outlet />
           </div>
         </main>
