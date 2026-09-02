@@ -62,10 +62,15 @@ export class TripService {
   }
 
   static async getAllTripsLogic() {
-    const cachedTrips = await MultiLevelCache.get(this.CACHE_KEY_ALL_TRIPS);
-    if (cachedTrips) return cachedTrips;
+    const now = new Date();
 
+    // Query trực tiếp các chuyến có giờ khởi hành trong tương lai
     const trips = await prisma.trips.findMany({
+      where: {
+        departureAt: {
+          gt: now, // 👈 Chỉ lấy các chuyến chưa chạy
+        },
+      },
       orderBy: { departureAt: "asc" },
       include: {
         tickets: {
@@ -75,10 +80,7 @@ export class TripService {
       },
     });
 
-    const formattedTrips = trips.map((trip) => this.formatTripWithSeats(trip));
-    // Cache 30 giây để cập nhật số ghế nhanh hơn thay vì 300s
-    await MultiLevelCache.set(this.CACHE_KEY_ALL_TRIPS, formattedTrips, 30);
-    return formattedTrips;
+    return trips.map((trip) => this.formatTripWithSeats(trip));
   }
 
   static async getTripByIdLogic(id: number) {
@@ -180,32 +182,53 @@ export class TripService {
     return deletedTrip;
   }
 
-  static async searchTripsSemanticLogic(prompt: string = "", limit = 5) {
+  static async searchTripsSemanticLogic(prompt: string = "", limit = 10) {
     const safePrompt = typeof prompt === "string" ? prompt : "";
     const cleanPrompt = safePrompt.trim().toLowerCase();
 
-    const isGetAll =
+    if (
       !cleanPrompt ||
       cleanPrompt.includes("tất cả") ||
       cleanPrompt.includes("danh sách") ||
-      cleanPrompt.includes("mặc định");
-
-    if (isGetAll) {
+      cleanPrompt.includes("mặc định")
+    ) {
       return await this.getAllTripsLogic();
     }
 
     const queryVector = await this.getEmbedding(cleanPrompt);
     const vectorString = `[${queryVector.join(",")}]`;
 
+    // Thêm điều kiện departureAt > NOW() vào câu raw query
     const trips: any[] = await prisma.$queryRaw`
-      SELECT id, route, "departureAt", price, "totalSeats", description,
-             1 - (embedding <=> ${vectorString}::vector) AS similarity
-      FROM "Trips"
-      WHERE 1 - (embedding <=> ${vectorString}::vector) > 0.65
-      ORDER BY similarity DESC
-      LIMIT ${limit};
-    `;
+    SELECT id, route, "departureAt", price, "totalSeats", description,
+           1 - (embedding <=> ${vectorString}::vector) AS similarity
+    FROM "Trips"
+    WHERE "departureAt" > NOW()
+      AND 1 - (embedding <=> ${vectorString}::vector) > 0.55
+    ORDER BY similarity DESC
+    LIMIT ${limit};
+  `;
 
-    return trips;
+    // Format số ghế còn trống thực tế cho các chuyến search ra
+    const tripIds = trips.map((t) => t.id);
+    const activeTickets = await prisma.tickets.findMany({
+      where: {
+        tripId: { in: tripIds },
+        status: { in: ["HELD", "PENDING", "CONFIRMED"] },
+      },
+      select: { tripId: true, seatNumber: true },
+    });
+
+    return trips.map((trip) => {
+      const tripTickets = activeTickets.filter((t) => t.tripId === trip.id);
+      const bookedSeatNumbers = tripTickets.map((t) => t.seatNumber);
+      const totalSeats = trip.totalSeats ?? 30;
+      return {
+        ...trip,
+        totalSeats,
+        availableSeats: Math.max(0, totalSeats - bookedSeatNumbers.length),
+        bookedSeatNumbers,
+      };
+    });
   }
 }

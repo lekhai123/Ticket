@@ -1,163 +1,213 @@
+// FILE: pages/customer/SearchTrip.tsx
 import { useState } from "react";
-import { Search, Sparkles, MapPin, Users, ArrowRight } from "lucide-react";
-import { useNavigate } from "react-router-dom"; // 👈 1. Import useNavigate
-import { Button } from "../../components/ui/Button";
+import { Search, MapPin, Users, ArrowRight, X, Clock } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { useTrips } from "../../hooks/useTrips";
 import { formatCurrency } from "../../utils/format";
+import { cn } from "../../utils/cn";
 
 export default function SearchTrip() {
-  const [prompt, setPrompt] = useState("");
-  const navigate = useNavigate(); // 👈 2. Khởi tạo hook navigate
-  const { semanticSearch, isSearching, trips, error } = useTrips();
+  const [query, setQuery] = useState("");
+  const navigate = useNavigate();
+  const { searchTrips, clearSearch, isSearching, isLoading, trips, error } =
+    useTrips();
 
-  const handleSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!prompt.trim()) return;
-    try {
-      await semanticSearch(prompt);
-    } catch (err) {
-      console.error("Search failed:", err);
-    }
+  const handleSearch = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    await searchTrips(query);
   };
 
-  // Hàm xử lý khi bấm chọn ghế chuyến xe
-  const handleSelectTrip = (tripId: number | string) => {
-    navigate(`/booking/${tripId}`); // 👈 Chuyển hướng sang trang booking đúng id chuyến
+  const handleReset = () => {
+    setQuery("");
+    clearSearch();
+  };
+
+  const handleQuickSearch = (keyword: string) => {
+    setQuery(keyword);
+    searchTrips(keyword);
   };
 
   return (
-    <div className="flex flex-col items-center pt-16 px-4 min-h-[80vh]">
-      <div className="text-center mb-10 max-w-2xl animate-in fade-in slide-in-from-bottom-4">
-        <h1 className="text-4xl font-bold tracking-tight mb-4 text-zinc-900 dark:text-white">
-          Trải nghiệm đặt vé bằng AI
+    <div className="min-h-[85vh] max-w-5xl mx-auto px-4 py-8">
+      {/* Search Header */}
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100 mb-2">
+          Tìm chuyến xe
         </h1>
-        <p className="text-lg text-zinc-600 dark:text-zinc-400">
-          Hãy mô tả chuyến đi của bạn. Ví dụ: <br />
-          <span className="italic font-medium text-indigo-500">
-            "Tôi muốn đi Đà Lạt cuối tuần này, giá rẻ, xe buổi sáng."
-          </span>
+        <p className="text-sm text-zinc-500">
+          Nhập địa điểm, thời gian hoặc mô tả mong muốn để tìm vé xe phù hợp
         </p>
       </div>
 
-      <form onSubmit={handleSearch} className="w-full max-w-3xl relative group">
-        <div className="absolute -inset-1 rounded-2xl bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 opacity-20 blur-lg transition duration-500 group-hover:opacity-40" />
+      {/* Modern Search Bar */}
+      <form onSubmit={handleSearch} className="mb-4">
+        <div className="flex items-center gap-3 rounded-2xl border border-zinc-200 bg-white p-2.5 shadow-sm transition-all focus-within:border-zinc-400 focus-within:ring-2 focus-within:ring-zinc-200/60 dark:border-zinc-800 dark:bg-zinc-900/90 dark:focus-within:border-zinc-600 dark:focus-within:ring-zinc-800">
+          <Search className="h-5 w-5 text-zinc-400 ml-3 flex-shrink-0" />
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Ví dụ: Sài Gòn đi Đà Lạt sáng mai, giá dưới 300k..."
+            className="w-full bg-transparent text-sm md:text-base outline-none text-zinc-900 placeholder:text-zinc-400 dark:text-white"
+          />
 
-        <div className="relative flex flex-col sm:flex-row items-center gap-2 rounded-2xl bg-white/80 dark:bg-zinc-900/80 backdrop-blur-xl border border-zinc-200 dark:border-zinc-800 p-2 shadow-xl">
-          <div className="flex-1 flex items-center px-4 w-full">
-            <Sparkles className="h-5 w-5 text-indigo-500 mr-3 animate-pulse flex-shrink-0" />
-            <input
-              type="text"
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder="Nhập yêu cầu của bạn..."
-              className="w-full bg-transparent h-12 text-base sm:text-lg outline-none text-zinc-900 dark:text-white placeholder:text-zinc-400"
-            />
-          </div>
-          <Button
+          {query && (
+            <button
+              type="button"
+              onClick={handleReset}
+              className="p-1.5 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 transition"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+
+          <button
             type="submit"
-            isLoading={isSearching}
-            className="w-full sm:w-auto rounded-xl px-8"
+            disabled={isSearching}
+            className="rounded-xl bg-zinc-900 px-6 py-2.5 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-60 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-100 flex-shrink-0"
           >
-            {!isSearching && <Search className="mr-2 h-4 w-4" />}
-            Tìm bằng AI
-          </Button>
+            {isSearching ? "Đang tìm..." : "Tìm kiếm"}
+          </button>
         </div>
       </form>
 
+      {/* Quick Search Chips */}
+      <div className="flex flex-wrap items-center gap-2 mb-10 text-xs">
+        <span className="text-zinc-400">Gợi ý nhanh:</span>
+        {["Đà Lạt", "Vũng Tàu", "Nha Trang", "Buổi sáng", "Xe Limousine"].map(
+          (tag) => (
+            <button
+              key={tag}
+              type="button"
+              onClick={() => handleQuickSearch(tag)}
+              className="rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-zinc-600 transition hover:bg-zinc-100 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800"
+            >
+              {tag}
+            </button>
+          ),
+        )}
+      </div>
+
       {error && (
-        <p className="mt-6 text-red-500 font-medium bg-red-50 dark:bg-red-900/20 px-4 py-2 rounded-lg">
-          {(error as any)?.message || "Đã có lỗi xảy ra khi gọi AI."}
-        </p>
+        <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-600 dark:border-red-900/40 dark:bg-red-950/20 dark:text-red-400">
+          Không thể tải dữ liệu tìm kiếm. Vui lòng thử lại sau.
+        </div>
       )}
 
-      {/* Render Danh sách Chuyến đi */}
-      <div className="w-full max-w-4xl mt-16 grid gap-4">
-        {trips.length > 0 && (
-          <h3 className="text-xl font-semibold mb-2 text-zinc-900 dark:text-white">
-            {prompt ? "Đề xuất từ AI" : "Chuyến xe nổi bật"}
-          </h3>
-        )}
+      {/* Danh sách chuyến xe */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between pb-2">
+          <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+            {query
+              ? `Kết quả tìm kiếm (${trips.length})`
+              : "Các chuyến xe sắp khởi hành"}
+          </span>
+        </div>
 
-        {trips.map((trip: any) => {
-          const [origin, destination] = trip.route
-            ? trip.route.split(" - ")
-            : ["--", "--"];
-
-          const departureDate = trip.departureAt
-            ? new Date(trip.departureAt)
-            : new Date();
-
-          const timeString = departureDate.toLocaleTimeString("vi-VN", {
-            hour: "2-digit",
-            minute: "2-digit",
-          });
-
-          return (
-            <div
-              key={trip.id}
-              className="group flex flex-col md:flex-row items-start md:items-center justify-between p-6 rounded-2xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950 transition-all hover:shadow-lg hover:border-indigo-200 dark:hover:border-indigo-900/50"
-            >
-              <div className="flex items-center gap-6 w-full md:w-auto mb-4 md:mb-0">
-                <div className="flex flex-col items-center">
-                  <span className="text-xl font-bold">{timeString}</span>
-                  <span className="text-sm text-zinc-500 font-medium">
-                    {origin}
-                  </span>
-                </div>
-                <div className="flex-1 md:w-32 flex flex-col items-center relative px-2">
-                  <div className="h-0.5 w-full bg-zinc-200 dark:bg-zinc-800 absolute top-1/2 -translate-y-1/2" />
-                  <ArrowRight className="h-4 w-4 text-zinc-400 bg-white dark:bg-zinc-950 relative z-10" />
-                </div>
-                <div className="flex flex-col items-center">
-                  <span className="text-xl font-bold">
-                    {trip.arrivalTime
-                      ? new Date(trip.arrivalTime).toLocaleTimeString("vi-VN", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })
-                      : "--:--"}
-                  </span>
-                  <span className="text-sm text-zinc-500 font-medium">
-                    {destination}
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex flex-row md:flex-col items-center md:items-end justify-between w-full md:w-auto gap-2">
-                <div className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">
-                  {formatCurrency(trip.price)}
-                </div>
-                <p className="text-sm text-amber-600 font-medium flex items-center gap-1">
-                  <Users className="h-4 w-4" /> Còn{" "}
-                  {trip.availableSeats ?? trip.totalSeats ?? 0} chỗ
-                </p>
-                {/* 3. Thêm sự kiện onClick để chuyển hướng sang trang chọn ghế */}
-                <Button
-                  size="sm"
-                  className="hidden md:inline-flex mt-2"
-                  onClick={() => handleSelectTrip(trip.id)}
-                >
-                  Chọn ghế
-                </Button>
-              </div>
-              <Button
-                className="w-full md:hidden mt-4"
-                onClick={() => handleSelectTrip(trip.id)}
-              >
-                Chọn ghế
-              </Button>
-            </div>
-          );
-        })}
-
-        {/* Empty State */}
-        {!isSearching && trips.length === 0 && !error && (
-          <div className="text-center py-20">
-            <MapPin className="mx-auto h-12 w-12 text-zinc-300 mb-4" />
-            <p className="text-zinc-500">
-              Không tìm thấy chuyến xe nào phù hợp với yêu cầu của bạn.
+        {isLoading ? (
+          <div className="space-y-3">
+            {[1, 2, 3].map((n) => (
+              <div
+                key={n}
+                className="h-28 rounded-2xl border border-zinc-200 bg-zinc-100/50 animate-pulse dark:border-zinc-800 dark:bg-zinc-900/50"
+              />
+            ))}
+          </div>
+        ) : trips.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-zinc-200 p-12 text-center dark:border-zinc-800">
+            <MapPin className="mx-auto h-8 w-8 text-zinc-300 dark:text-zinc-600 mb-2" />
+            <p className="text-sm text-zinc-500">
+              Hiện chưa có chuyến xe nào phù hợp hoặc các chuyến đã khởi hành.
             </p>
           </div>
+        ) : (
+          trips.map((trip: any) => {
+            const [origin, destination] = trip.route
+              ? trip.route.split(" - ")
+              : ["Điểm đi", "Điểm đến"];
+
+            const departureDate = trip.departureAt
+              ? new Date(trip.departureAt)
+              : new Date();
+
+            const timeString = departureDate.toLocaleTimeString("vi-VN", {
+              hour: "2-digit",
+              minute: "2-digit",
+            });
+
+            const dateString = departureDate.toLocaleDateString("vi-VN", {
+              weekday: "short",
+              day: "2-digit",
+              month: "2-digit",
+            });
+
+            const availableSeats = trip.availableSeats ?? trip.totalSeats ?? 0;
+            const isFull = availableSeats === 0;
+
+            return (
+              <div
+                key={trip.id}
+                className="group flex flex-col md:flex-row items-start md:items-center justify-between gap-4 rounded-2xl border border-zinc-200 bg-white p-5 transition hover:border-zinc-300 hover:shadow-md dark:border-zinc-800 dark:bg-zinc-900/50 dark:hover:border-zinc-700"
+              >
+                {/* Thời gian & Tuyến đường */}
+                <div className="flex items-center gap-5 w-full md:w-auto">
+                  <div className="flex flex-col">
+                    <span className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-white">
+                      {timeString}
+                    </span>
+                    <span className="text-xs text-zinc-400 flex items-center gap-1 mt-0.5">
+                      <Clock className="h-3 w-3" /> {dateString}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <div className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
+                      {origin}
+                    </div>
+                    <ArrowRight className="h-4 w-4 text-zinc-400 shrink-0" />
+                    <div className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
+                      {destination}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Chỗ trống, Giá vé & Nút chọn */}
+                <div className="flex items-center justify-between w-full md:w-auto md:gap-8 pt-3 md:pt-0 border-t md:border-t-0 border-zinc-100 dark:border-zinc-800">
+                  <div className="flex flex-col md:items-end">
+                    <span className="text-lg font-bold text-zinc-900 dark:text-white">
+                      {formatCurrency(trip.price)}
+                    </span>
+                    <span
+                      className={cn(
+                        "text-xs flex items-center gap-1 font-medium mt-0.5",
+                        isFull
+                          ? "text-rose-500"
+                          : availableSeats <= 5
+                            ? "text-amber-500"
+                            : "text-emerald-500",
+                      )}
+                    >
+                      <Users className="h-3.5 w-3.5" />
+                      {isFull ? "Hết vé" : `Còn ${availableSeats} chỗ`}
+                    </span>
+                  </div>
+
+                  <button
+                    disabled={isFull}
+                    onClick={() => navigate(`/booking/${trip.id}`)}
+                    className={cn(
+                      "rounded-xl px-5 py-2.5 text-sm font-medium transition",
+                      isFull
+                        ? "bg-zinc-100 text-zinc-400 cursor-not-allowed dark:bg-zinc-800 dark:text-zinc-500"
+                        : "bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm",
+                    )}
+                  >
+                    {isFull ? "Hết chỗ" : "Chọn ghế"}
+                  </button>
+                </div>
+              </div>
+            );
+          })
         )}
       </div>
     </div>

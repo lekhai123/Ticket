@@ -1,27 +1,25 @@
 // FILE: hooks/useTrips.ts
 import { useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { tripService } from "../services/trip.service";
 import type { Trip } from "../types";
 
 export const useTrips = () => {
-  // Quản lý kết quả search AI riêng biệt để có thể reset về danh sách gốc
+  const queryClient = useQueryClient();
   const [searchResults, setSearchResults] = useState<Trip[] | null>(null);
 
-  // 1. Query danh sách chuyến đi mặc định
   const defaultTripsQuery = useQuery<Trip[], Error>({
     queryKey: ["trips", "default"],
     queryFn: async () => {
       const res: any = await tripService.getAllTrips();
-      // Đảm bảo luôn trả về mảng Trip[] dù service có bọc .data hay không
       if (Array.isArray(res)) return res;
       if (Array.isArray(res?.data)) return res.data;
       return [];
     },
-    staleTime: 60 * 1000, // Giữ tươi trong 1 phút
+    staleTime: 5 * 1000, // 👈 Dữ liệu chỉ giữ tươi 5s để phản ánh số chỗ tức thì
+    refetchOnWindowFocus: true, // 👈 Tự động tải lại số ghế khi chuyển tab quay lại
   });
 
-  // 2. Mutation tìm kiếm AI
   const semanticSearchMutation = useMutation<Trip[], Error, string>({
     mutationFn: async (prompt: string) => {
       const res: any = await tripService.semanticSearch(prompt);
@@ -34,32 +32,29 @@ export const useTrips = () => {
     },
   });
 
-  // Hàm tìm kiếm bọc ngoài: nếu xóa trắng ô input -> tự reset về danh sách mặc định
-  const handleSemanticSearch = async (prompt: string) => {
+  const handleSearch = async (prompt: string) => {
     const trimmed = prompt.trim();
     if (!trimmed) {
       setSearchResults(null);
-      return defaultTripsQuery.data || [];
+      await queryClient.invalidateQueries({ queryKey: ["trips", "default"] });
+      return;
     }
-    return await semanticSearchMutation.mutateAsync(trimmed);
+    await semanticSearchMutation.mutateAsync(trimmed);
   };
 
-  // Hàm chủ động xóa kết quả tìm kiếm AI để trở về danh sách gốc
   const clearSearch = () => {
     setSearchResults(null);
     semanticSearchMutation.reset();
   };
 
-  // Ưu tiên hiển thị kết quả AI nếu đang active, ngược lại hiển thị danh sách mặc định
   const trips: Trip[] = searchResults ?? defaultTripsQuery.data ?? [];
 
   return {
     trips,
-    semanticSearch: handleSemanticSearch,
+    searchTrips: handleSearch,
     clearSearch,
     isSearching: semanticSearchMutation.isPending,
-    isLoadingDefault: defaultTripsQuery.isLoading,
-    isLoading: semanticSearchMutation.isPending || defaultTripsQuery.isLoading,
+    isLoading: defaultTripsQuery.isLoading || semanticSearchMutation.isPending,
     error: semanticSearchMutation.error || defaultTripsQuery.error,
     refetchDefault: defaultTripsQuery.refetch,
   };
