@@ -382,7 +382,7 @@ export class AdminService {
 
     let geminiBackupStatus = "HEALTHY";
     let geminiBackupLatency = "N/A";
-    const backupKey = process.env["GEMINI_API_KEY-BACKUP"];
+    const backupKey = process.env.GEMINI_SECONDARY_KEY;
 
     if (backupKey) {
       try {
