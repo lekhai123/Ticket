@@ -29,9 +29,10 @@ const allowedOrigins = [
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Cho phép request không có origin (ví dụ: Mobile app, Postman, test script) hoặc nằm trong danh sách
+      // Cho phép request không có origin hoặc nằm trong danh sách
       if (
         !origin ||
+        (origin && origin.endsWith(".vercel.app")) || // 👈 Thêm dòng này để cho phép Vercel
         allowedOrigins.includes(origin) ||
         process.env.NODE_ENV !== "production"
       ) {
