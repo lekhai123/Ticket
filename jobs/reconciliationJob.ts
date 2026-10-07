@@ -1,4 +1,3 @@
-// jobs/reconciliationJob.ts
 import cron from "node-cron";
 import { ReconciliationService } from "../Service/reconciliationService";
 
@@ -8,9 +7,9 @@ export const initReconciliationCron = () => {
     try {
       await ReconciliationService.runDailyReconciliation();
     } catch (error) {
-      console.error("❌ Lỗi khi chạy Cron Job đối soát 3h sáng:", error);
+      console.error("Lỗi khi chạy Cron Job đối soát 3h sáng:", error);
     }
   });
 
-  console.log("⏰ đã đăng ký Cron Job đối soát tài chính (Chạy lúc 03:00 AM)");
+  console.log("đã đăng ký Cron Job đối soát tài chính (Chạy lúc 03:00 AM)");
 };

@@ -1,4 +1,3 @@
-// FILE: queues/mailQueue.ts
 import { Queue, Worker, Job } from "bullmq";
 import Redis from "ioredis";
 import { sendOtpEmail } from "../config/resend";
@@ -17,18 +16,18 @@ export interface MailJobData {
   type: "REGISTER" | "FORGOT_PASSWORD";
 }
 
-// 🎯 1. Khởi tạo Queue gửi mail
+// 1. Khởi tạo Queue gửi mail
 export const mailQueue = new Queue<MailJobData>("mail-queue", {
   connection: redisConnection,
 });
 
-// 🎯 2. Khởi tạo Worker xử lý background
+// 2. Khởi tạo Worker xử lý background
 export const mailWorker = new Worker<MailJobData>(
   "mail-queue",
   async (job: Job<MailJobData>) => {
     const { email, code, type } = job.data;
     console.log(
-      `🚀 [QUEUE WORKER] Đang xử lý gửi mail OTP cho: ${email} (Job ID: ${job.id})`,
+      ` [QUEUE WORKER] Đang xử lý gửi mail OTP cho: ${email} (Job ID: ${job.id})`,
     );
 
     // Gọi hàm gửi Resend đã viết sẵn
@@ -42,7 +41,7 @@ export const mailWorker = new Worker<MailJobData>(
   },
   {
     connection: redisConnection,
-    // 🛡️ CHỐNG RATE LIMIT RESEND: Giới hạn tối đa 10 mail / 1 giây
+    // CHỐNG RATE LIMIT RESEND: Giới hạn tối đa 10 mail / 1 giây
     limiter: {
       max: 10,
       duration: 1000,
@@ -54,12 +53,12 @@ export const mailWorker = new Worker<MailJobData>(
 // Event Listeners để logging cho đẹp
 mailWorker.on("completed", (job) => {
   console.log(
-    `✅ [QUEUE SUCCESS] Đã gửi mail thành công cho Job ID: ${job.id}`,
+    `[QUEUE SUCCESS] Đã gửi mail thành công cho Job ID: ${job.id}`,
   );
 });
 
 mailWorker.on("failed", (job, err) => {
   console.error(
-    `❌ [QUEUE FAILED] Job ID ${job?.id} thất bại. Lỗi: ${err.message}`,
+    `[QUEUE FAILED] Job ID ${job?.id} thất bại. Lỗi: ${err.message}`,
   );
 });
