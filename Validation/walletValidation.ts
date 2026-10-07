@@ -14,7 +14,7 @@ export const topUpWalletSchema = z.object({
       .number({ message: "Số tiền nạp không được bỏ trống và phải là số!" })
       .positive("Số tiền nạp vào ví phải lớn hơn 0!"),
 
-    // 🌟 BỔ SUNG 2 TRƯỜNG NÀY ĐỂ ZOD KHÔNG CẮT BỎ DỮ LIỆU LOG
+    //  BỔ SUNG 2 TRƯỜNG NÀY ĐỂ ZOD KHÔNG CẮT BỎ DỮ LIỆU LOG
     batchId: z.string().optional().nullable(),
     action: z.string().optional().nullable(),
   }),

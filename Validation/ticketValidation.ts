@@ -31,7 +31,7 @@ export const getUserTicketsSchema = z.object({
   }),
 });
 export const cancelTicketSchema = z.object({
-  // 🎯 Thêm .optional() hoặc .default({}) cho body vì Hủy vé chỉ cần ID ở params
+  //  Thêm .optional() hoặc .default({}) cho body vì Hủy vé chỉ cần ID ở params
   body: z.object({}).optional(),
 
   params: z.object({

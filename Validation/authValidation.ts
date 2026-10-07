@@ -1,4 +1,3 @@
-// FILE: Validation/authValidation.ts
 import { z } from "zod";
 
 const ALLOWED_TYPES = ["REGISTER", "FORGOT_PASSWORD"] as const;

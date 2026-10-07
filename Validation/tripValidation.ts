@@ -1,4 +1,3 @@
-// FILE: Validation/tripValidation.ts
 import { z } from "zod";
 
 /**
@@ -53,7 +52,7 @@ export const updateTripSchema = z.object({
 });
 
 /**
- * 🌟 3. SCHEMA MỚI: Validate cho các API nhận tham số ID trên URL (GET /:id, DELETE /:id)
+ * 3. SCHEMA MỚI: Validate cho các API nhận tham số ID trên URL (GET /:id, DELETE /:id)
  */
 export const getTripParamSchema = z.object({
   params: z.object({
@@ -64,7 +63,7 @@ export const getTripParamSchema = z.object({
 });
 
 /**
- * 🌟 4. SCHEMA MỚI: Validate cho API Tìm kiếm bằng AI (GET /search-ai?query=...&limit=...)
+ * 4. SCHEMA MỚI: Validate cho API Tìm kiếm bằng AI (GET /search-ai?query=...&limit=...)
  */
 export const searchAiSchema = z.object({
   body: z.object({
