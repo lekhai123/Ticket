@@ -1,12 +1,11 @@
-// FILE: Services/cacheService.ts
 import { LRUCache } from "lru-cache";
 import { redisPrimary, redisBackup } from "../Utils/redisLock";
 import type Redis from "ioredis";
 
-// Layer 1: RAM Cache local (Siêu nhanh - Microseconds)
+// Layer 1: RAM Cache local
 const localCache = new LRUCache<string, any>({
   max: 500,
-  ttl: 1000 * 10, // 10 giây
+  ttl: 1000 * 10,
 });
 
 export class MultiLevelCache {
@@ -21,16 +20,14 @@ export class MultiLevelCache {
       redisBackup &&
       (redisBackup.status === "ready" || redisBackup.status === "connect")
     ) {
-      console.warn(
-        "🔄 [CACHE FAILOVER] Đang sử dụng Redis Backup cho L2 Cache!",
-      );
+      console.warn("[CACHE FAILOVER] Đang sử dụng Redis Backup cho L2 Cache!");
       return redisBackup;
     }
     return null;
   }
 
   /**
-   * 🔍 Đọc dữ liệu: L1 (RAM) -> L2 (Redis Primary/Backup) -> DB Fallback
+   * Đọc dữ liệu: L1 (RAM) -> L2 (Redis Primary/Backup) -> DB Fallback
    */
   static async get<T>(key: string): Promise<T | null> {
     // 1. Check L1 (RAM Local)
@@ -49,9 +46,7 @@ export class MultiLevelCache {
           return parsed;
         }
       } catch (error: any) {
-        console.warn(
-          `⚠️ [CACHE WARNING] Lỗi đọc Redis Cache: ${error.message}`,
-        );
+        console.warn(`[CACHE WARNING] Lỗi đọc Redis Cache: ${error.message}`);
       }
     }
 
@@ -59,7 +54,7 @@ export class MultiLevelCache {
   }
 
   /**
-   * 💾 Ghi dữ liệu đồng thời L1 (RAM) và L2 (Redis)
+   * Ghi dữ liệu đồng thời L1 (RAM) và L2 (Redis)
    */
   static async set(
     key: string,
@@ -75,15 +70,13 @@ export class MultiLevelCache {
       try {
         await activeRedis.setex(key, ttlSeconds, JSON.stringify(value));
       } catch (error: any) {
-        console.warn(
-          `⚠️ [CACHE WARNING] Lỗi ghi Redis Cache: ${error.message}`,
-        );
+        console.warn(`[CACHE WARNING] Lỗi ghi Redis Cache: ${error.message}`);
       }
     }
   }
 
   /**
-   * 🧹 Xóa/Làm mới Cache
+   *  Xóa/Làm mới Cache
    */
   static async invalidate(keyPattern: string): Promise<void> {
     // Xóa sạch RAM Cache L1
@@ -99,7 +92,7 @@ export class MultiLevelCache {
         }
       } catch (error: any) {
         console.warn(
-          `⚠️ [CACHE WARNING] Lỗi invalidate Redis Cache: ${error.message}`,
+          ` [CACHE WARNING] Lỗi invalidate Redis Cache: ${error.message}`,
         );
       }
     }

@@ -1,4 +1,3 @@
-// src/services/reconciliationService.ts
 import { PrismaClient } from "@prisma/client";
 import { AIReconciliationAnalyzer } from "../Service/aiReconciliationAnalyzer.service";
 
@@ -15,7 +14,7 @@ export interface MismatchDetail {
 
 export class ReconciliationService {
   static async runDailyReconciliation() {
-    console.log("🔄 [AIOps] Bắt đầu tiến trình đối soát & Tự động phục hồi...");
+    console.log("Bắt đầu tiến trình đối soát & Tự động phục hồi...");
 
     const startTime = Date.now();
     const mismatchedAccounts: MismatchDetail[] = [];

@@ -1,10 +1,8 @@
-// FILE: Services/authService.ts
 import prisma from "../database/prismaClient";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { OtpService } from "./otpService";
 
-// Lấy Secret Key từ file config/env
 const ACCESS_TOKEN_SECRET =
   process.env.JWT_ACCESS_SECRET || "access_secret_key";
 const REFRESH_TOKEN_SECRET =
@@ -12,7 +10,7 @@ const REFRESH_TOKEN_SECRET =
 
 export class AuthService {
   /**
-   * 🎯 1. Đăng nhập hệ thống: Trả về Access Token ngắn hạn & Refresh Token dài hạn
+   * 1. Đăng nhập hệ thống: Trả về Access Token ngắn hạn & Refresh Token dài hạn
    */
   static async login(data: {
     email: string;
@@ -49,7 +47,7 @@ export class AuthService {
       role: user.role,
     };
 
-    // 🎯 4. Tạo cặp Access Token (15 phút) và Refresh Token (7 ngày)
+    // 4. Tạo cặp Access Token (15 phút) và Refresh Token (7 ngày)
     const accessToken = jwt.sign(payload, ACCESS_TOKEN_SECRET, {
       expiresIn: "15m",
     });
@@ -69,10 +67,10 @@ export class AuthService {
   }
 
   /**
-   * 🎯 1b. Cấp lại Access Token mới dựa vào Refresh Token
+   * 1b. Cấp lại Access Token mới dựa vào Refresh Token
    */
   /**
-   * 🎯 Cấp lại Access Token từ Refresh Token
+   *  Cấp lại Access Token từ Refresh Token
    */
   static async refreshToken(refreshToken: string) {
     try {
@@ -128,7 +126,7 @@ export class AuthService {
     }
   }
   /**
-   * 🎯 2. Đăng ký thông thường
+   *2. Đăng ký thông thường
    */
   static async register(data: {
     fullName: string;
@@ -174,7 +172,7 @@ export class AuthService {
   }
 
   /**
-   * 🎯 3. Yêu cầu gửi OTP
+   *3. Yêu cầu gửi OTP
    */
   static async requestOtp(email: string, type: "REGISTER" | "FORGOT_PASSWORD") {
     const cleanEmail = email.toLowerCase().trim();
@@ -203,7 +201,7 @@ export class AuthService {
   }
 
   /**
-   * 🎯 4. Đăng ký tài khoản kèm OTP
+   * 4. Đăng ký tài khoản kèm OTP
    */
   static async completeRegister(data: {
     fullName: string;
@@ -251,7 +249,7 @@ export class AuthService {
   }
 
   /**
-   * 🎯 5. Khôi phục / Đặt lại mật khẩu qua OTP
+   * 5. Khôi phục / Đặt lại mật khẩu qua OTP
    */
   static async resetPassword(data: any) {
     const { email, otp, newPassword } = data;

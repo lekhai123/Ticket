@@ -1,10 +1,9 @@
-// FILE: Services/bookingService.ts
 import prisma from "../database/prismaClient";
 import { RedisLock } from "../Utils/redisLock";
 
 export class BookingService {
   /**
-   * 🎯 1. GIỮ GHẾ VÀ TẠO VÉ (Sử dụng Redis Distributed Lock)
+   * 1. GIỮ GHẾ VÀ TẠO VÉ (Sử dụng Redis Distributed Lock)
    */
   static async holdOrBookSeat(
     userId: number,
@@ -14,7 +13,7 @@ export class BookingService {
   ) {
     const lockKey = `lock:trip:${tripId}:seat:${seatNumber}`;
 
-    // 🔒 1. Bắt Redis Lock (Khóa trong 10 giây để xử lý DB transaction)
+    // 1. Bắt Redis Lock (Khóa trong 10 giây để xử lý DB transaction)
     const lockToken = await RedisLock.acquire(lockKey, 10);
     if (!lockToken) {
       const error: any = new Error(
@@ -42,7 +41,6 @@ export class BookingService {
         throw error;
       }
 
-      // Lấy thông tin chuyến xe để check giá tiền
       const trip = await prisma.trips.findUnique({
         where: { id: tripId },
       });
@@ -53,12 +51,11 @@ export class BookingService {
         throw error;
       }
 
-      // 3. Thực hiện Transaction: Trừ tiền Ví (nếu thanh toán ngay) + Tạo vé + Giảm số ghế trống
+      // 3. Thực hiện Transaction: Trừ tiền Ví (nếu thanh toán ngay) + Tạo vé
       const result = await prisma.$transaction(async (tx) => {
         let initialStatus: "HELD" | "PENDING" | "CONFIRMED" = "PENDING";
 
         if (paymentMethod === "WALLET") {
-          // Kiểm tra số dư ví của User
           const wallet = await tx.wallets.findUnique({
             where: { userId },
           });
@@ -74,7 +71,6 @@ export class BookingService {
             throw error;
           }
 
-          // Trừ tiền ví
           await tx.wallets.update({
             where: { userId },
             data: {
@@ -85,7 +81,6 @@ export class BookingService {
           initialStatus = "CONFIRMED"; // Thanh toán bằng ví xong -> Xác nhận luôn
         }
 
-        // Tạo vé với trạng thái tương ứng
         const newTicket = await tx.tickets.create({
           data: {
             userId,
@@ -95,26 +90,18 @@ export class BookingService {
           },
         });
 
-        // Giảm số ghế trống của chuyến xe
-        await tx.trips.update({
-          where: { id: tripId },
-          data: {
-            availableSeats: { decrement: 1 },
-          },
-        });
-
         return newTicket;
       });
 
       return result;
     } finally {
-      // 🔓 4. Luôn giải phóng Redis Lock sau khi hoàn tất
+      // 4. Luôn giải phóng Redis Lock sau khi hoàn tất
       await RedisLock.release(lockKey, lockToken);
     }
   }
 
   /**
-   * 🎯 2. KHÁCH HÀNG CHỦ ĐỘNG HỦY VÉ
+   * 2. KHÁCH HÀNG CHỦ ĐỘNG HỦY VÉ
    */
   static async cancelTicket(userId: number, ticketId: number) {
     const ticket = await prisma.tickets.findUnique({
@@ -140,18 +127,12 @@ export class BookingService {
       throw error;
     }
 
-    // Thực hiện transaction hủy vé, hoàn tiền vào ví (nếu đã CONFIRMED) và tăng lại số ghế trống
+    // Thực hiện transaction hủy vé, hoàn tiền vào ví (nếu đã CONFIRMED)
     return await prisma.$transaction(async (tx) => {
       // Cập nhật trạng thái vé thành CANCELED
       const updatedTicket = await tx.tickets.update({
         where: { id: ticketId },
         data: { status: "CANCELED" },
-      });
-
-      // Tăng lại số ghế trống cho chuyến xe
-      await tx.trips.update({
-        where: { id: ticket.tripId },
-        data: { availableSeats: { increment: 1 } },
       });
 
       // Nếu vé đã được thanh toán (CONFIRMED), tiến hành hoàn tiền vào ví
@@ -167,7 +148,7 @@ export class BookingService {
   }
 
   /**
-   * 🎯 3. ADMIN THU HỒI VÉ / HỦY VÉ
+   * 3. ADMIN THU HỒI VÉ / HỦY VÉ
    */
   static async adminRevokeTicket(ticketId: number) {
     const ticket = await prisma.tickets.findUnique({
@@ -184,12 +165,6 @@ export class BookingService {
       const updated = await tx.tickets.update({
         where: { id: ticketId },
         data: { status: "REVOKED_BY_ADMIN" },
-      });
-
-      // Trả lại ghế trống cho chuyến xe
-      await tx.trips.update({
-        where: { id: ticket.tripId },
-        data: { availableSeats: { increment: 1 } },
       });
 
       return updated;

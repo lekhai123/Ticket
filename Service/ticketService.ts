@@ -2,13 +2,13 @@ import prisma from "../database/prismaClient";
 
 export class TicketService {
   /**
-   * ĐẶT VÉ NÂNG CAO: Prisma $transaction hoàn hảo
+   * ĐẶT VÉ NÂNG CAO: Prisma $transaction
    * Tự động Rollback hoàn tiền 100% nếu số ghế bị trùng hoặc phát sinh lỗi
    */
   static async bookTicketTransaction(
     userId: number,
     tripId: number,
-    seatNumbers: number[], // 👈 Nhận mảng số ghế, VD: [11, 12, 13]
+    seatNumbers: number[], //Nhận mảng số ghế, VD: [11, 12, 13]
   ) {
     // Ép kiểu & lọc mảng ghế hợp lệ
     const cleanSeats = Array.from(
@@ -23,12 +23,11 @@ export class TicketService {
       throw error;
     }
 
-    // 🎯 1. Tạo Batch ID và Request ID nhất quán cho đợt đặt vé này
+    //Tạo Batch ID và Request ID nhất quán cho đợt đặt vé này
     const batchId = `BOOK_${Date.now()}`;
     const requestId = `BOOK_TICKET_${Date.now()}`;
 
     return await prisma.$transaction(async (tx) => {
-      // 1. Kiểm tra chuyến xe
       const trip = await tx.trips.findUnique({
         where: { id: tripId },
       });
@@ -39,7 +38,7 @@ export class TicketService {
         throw error;
       }
 
-      // 2. Validate vị trí ghế xem có vượt quá tổng số ghế của xe không
+      // Validate vị trí ghế xem có vượt quá tổng số ghế của xe không
       for (const seatNum of cleanSeats) {
         if (seatNum > trip.totalSeats) {
           const error: any = new Error(
@@ -49,11 +48,7 @@ export class TicketService {
           throw error;
         }
       }
-
-      // 3. Tính tổng tiền của tất cả các ghế chọn
       const totalPrice = Number(trip.price) * cleanSeats.length;
-
-      // 4. Kiểm tra ví người dùng
       const wallet = await tx.wallets.findUnique({
         where: { userId },
       });
@@ -64,7 +59,6 @@ export class TicketService {
         throw error;
       }
 
-      // 5. Kiểm tra số dư tài khoản cho TỔNG TIỀN
       if (wallet.balance.lessThan(totalPrice)) {
         const error: any = new Error(
           `Số dư ví không đủ! Cần ${totalPrice.toLocaleString("vi-VN")} VNĐ để mua ${cleanSeats.length} ghế.`,
@@ -72,8 +66,6 @@ export class TicketService {
         error.statusCode = 400;
         throw error;
       }
-
-      // 6. Trừ tiền ví (Trừ 1 lần cho tổng số ghế)
       const updatedWallet = await tx.wallets.update({
         where: { userId },
         data: {
@@ -83,13 +75,12 @@ export class TicketService {
         },
       });
 
-      // 🎯 Bổ sung batchId vào AuditLog để Admin UI hiển thị mã màu cam chuẩn xác
       await tx.auditLog.create({
         data: {
           requestId,
           userId,
           action: "BOOK_TICKET_PAYMENT",
-          batchId, // 👈 ĐÃ BỔ SUNG BATCH ID VÀO ĐÂY
+          batchId,
           resource: "Wallets",
           resourceId: String(wallet.id),
           newData: {
@@ -103,7 +94,6 @@ export class TicketService {
         },
       });
 
-      // 7. Tạo MỖI GHẾ = 1 VÉ RECORD ĐỘC LẬP
       const createdTickets = [];
 
       try {
@@ -121,7 +111,6 @@ export class TicketService {
               tripId,
               seatNumber: seatNum, // 1 ghế / 1 vé (kiểu Int)
               status: "CONFIRMED",
-              // batchId, // 👈 Bỏ comment dòng này nếu bảng Tickets trong schema.prisma của bạn có cột batchId
             },
             include: {
               trip: true,
@@ -131,7 +120,7 @@ export class TicketService {
         }
 
         return {
-          batchId, // 🎯 Trả về batchId cho client (Frontend)
+          batchId,
           tickets: createdTickets,
           totalPaid: totalPrice,
           remainingBalance: updatedWallet.balance,
@@ -154,12 +143,11 @@ export class TicketService {
     const tickets = await prisma.tickets.findMany({
       where: {
         userId,
-        // 🎯 Không filter status để lấy cả vé CONFIRMED, CANCELED lẫn REVOKED_BY_ADMIN
       },
       select: {
         id: true,
         seatNumber: true,
-        status: true, // 🎯 BẮT BUỘC có status để Frontend render đúng nhãn "Đã thu hồi"
+        status: true,
         createdAt: true,
         trip: {
           select: {
@@ -175,7 +163,6 @@ export class TicketService {
       },
     });
 
-    // Convert Decimal sang number để Frontend nhận kiểu dữ liệu an toàn
     return tickets.map((ticket) => ({
       ...ticket,
       trip: ticket.trip
@@ -187,7 +174,6 @@ export class TicketService {
     }));
   }
   static async cancelTicket(ticketId: number, userId: number) {
-    // 1. Kiểm tra vé có tồn tại và thuộc về đúng User không
     const ticket = await prisma.tickets.findUnique({
       where: { id: ticketId },
       include: { trip: true },
@@ -218,7 +204,7 @@ export class TicketService {
       error.statusCode = 400;
       throw error;
     }
-    // 🎯 LOGIC MỚI: CHẶN HỦY VÉ TRƯỚC 1 GIỜ KHỞI HÀNH
+    // CHẶN HỦY VÉ TRƯỚC 1 GIỜ KHỞI HÀNH
     const now = new Date().getTime();
     const departureTime = new Date(ticket.trip.departureAt).getTime();
     const ONE_HOUR_IN_MS = 60 * 60 * 1000;
@@ -233,15 +219,13 @@ export class TicketService {
     const refundAmount = Number(ticket.trip.price);
     const requestId = `CANCEL_TICKET_${Date.now()}`;
 
-    // 2. Thực thi Transaction: Cập nhật vé + Hoàn tiền ví + Ghi AuditLog
+    //Thực thi Transaction: Cập nhật vé + Hoàn tiền ví + Ghi AuditLog
     return await prisma.$transaction(async (tx) => {
-      // Đổi trạng thái vé thành CANCELED
       const updatedTicket = await tx.tickets.update({
         where: { id: ticketId },
         data: { status: "CANCELED" },
       });
 
-      // Hoàn tiền lại vào ví của User
       const updatedWallet = await tx.wallets.update({
         where: { userId },
         data: {
@@ -251,7 +235,6 @@ export class TicketService {
         },
       });
 
-      // Ghi nhật ký vào AuditLog
       await tx.auditLog.create({
         data: {
           requestId,

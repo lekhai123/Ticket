@@ -3,15 +3,11 @@ import bcrypt from "bcryptjs";
 import { CloudinaryService } from "./cloudinaryService";
 
 export class UserService {
-  /**
-   * Đăng ký tài khoản mới và TỰ ĐỘNG khởi tạo Ví (Balance = 0.00) trong 1 Transaction
-   */
   static async registerUser(data: {
     email: string;
     password: string;
     fullName: string;
   }) {
-    // 1. Kiểm tra Email đã tồn tại chưa
     const existingUser = await prisma.users.findUnique({
       where: { email: data.email },
     });
@@ -22,10 +18,8 @@ export class UserService {
       throw error;
     }
 
-    // 2. Mã hóa mật khẩu
     const hashedPassword = await bcrypt.hash(data.password, 10);
 
-    // 3. Thực thi Transaction: Tạo User + Tạo Ví
     return await prisma.$transaction(async (tx) => {
       const newUser = await tx.users.create({
         data: {
@@ -39,7 +33,7 @@ export class UserService {
           },
         },
         include: {
-          wallet: true, // Trả về kèm thông tin ví vừa khởi tạo
+          wallet: true,
         },
       });
 
@@ -49,9 +43,6 @@ export class UserService {
     });
   }
 
-  /**
-   * Lấy thông tin User theo ID (kèm thông tin Ví)
-   */
   static async getUserById(userId: number) {
     const user = await prisma.users.findUnique({
       where: { id: userId },
@@ -99,13 +90,11 @@ export class UserService {
     return user;
   }
   static async updateAvatar(userId: number, fileBuffer: Buffer) {
-    // 1. Gọi CloudinaryService đẩy ảnh và nhận link CDN
     const avatarUrl = await CloudinaryService.uploadAvatarStream(
       fileBuffer,
       userId,
     );
 
-    // 2. Cập nhật URL vào DB Supabase qua Prisma
     const updatedUser = await prisma.users.update({
       where: { id: userId },
       data: { avatarUrl },

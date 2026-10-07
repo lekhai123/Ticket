@@ -1,4 +1,3 @@
-// src/services/aiProxy.service.ts
 import { GoogleGenAI } from "@google/genai";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
@@ -33,9 +32,7 @@ export class AIProxyService {
       if (!provider.apiKey) continue;
 
       try {
-        console.log(
-          `🤖 [AI Proxy] Đang xử lý qua Provider: ${provider.name}...`,
-        );
+        console.log(`[AI Proxy] Đang xử lý qua Provider: ${provider.name}...`);
         const genAI = new GoogleGenerativeAI(provider.apiKey);
         const model = genAI.getGenerativeModel({ model: provider.modelName });
 
@@ -48,13 +45,13 @@ export class AIProxyService {
       } catch (error: any) {
         lastError = error;
         console.warn(
-          `⚠️ [AI Proxy] Provider ${provider.name} thất bại (${error.message}). Đang tự động chuyển sang Provider dự phòng...`,
+          ` [AI Proxy] Provider ${provider.name} thất bại (${error.message}). Đang tự động chuyển sang Provider dự phòng...`,
         );
       }
     }
 
     throw new Error(
-      `❌ [AI Proxy Critical] Tất cả các AI Provider/Key dự phòng đều sập! Error: ${lastError?.message}`,
+      ` [AI Proxy Critical] Tất cả các AI Provider/Key dự phòng đều sập! Error: ${lastError?.message}`,
     );
   }
 
@@ -74,7 +71,7 @@ export class AIProxyService {
 
       try {
         console.log(
-          `🤖 [AI Proxy Embedding] Đang tạo Vector qua: ${provider.name}...`,
+          ` [AI Proxy Embedding] Đang tạo Vector qua: ${provider.name}...`,
         );
         const ai = new GoogleGenAI({ apiKey: provider.apiKey });
 
@@ -98,13 +95,13 @@ export class AIProxyService {
       } catch (error: any) {
         lastError = error;
         console.warn(
-          `⚠️ [AI Proxy Embedding] ${provider.name} gặp sự cố (${error.message}). Đang chuyển sang ${provider.name === "Gemini-Primary" ? "GEMINI_SECONDARY_KEY" : "kết thúc"}...`,
+          `[AI Proxy Embedding] ${provider.name} gặp sự cố (${error.message}). Đang chuyển sang ${provider.name === "Gemini-Primary" ? "GEMINI_SECONDARY_KEY" : "kết thúc"}...`,
         );
       }
     }
 
     throw new Error(
-      `❌ [AI Proxy Critical] Không thể tạo Embedding từ cả Primary lẫn Secondary Key! Error: ${lastError?.message}`,
+      ` [AI Proxy Critical] Không thể tạo Embedding từ cả Primary lẫn Secondary Key! Error: ${lastError?.message}`,
     );
   }
 }

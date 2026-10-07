@@ -38,10 +38,9 @@ export class AdminController {
   });
 
   // Tặng quà / Nạp tiền hàng loạt
-  // FILE: Controller/adminController.ts
 
   static massGift = catchAsync(async (req: Request, res: Response) => {
-    // 🎯 Lấy adminUserId uy tín từ req.user
+    // Lấy adminUserId uy tín từ req.user
     const user = (req as any).user;
     const adminUserId = user?.id || user?.userId;
     if (!adminUserId) {
@@ -49,7 +48,7 @@ export class AdminController {
         success: false,
         message: "Phiên làm việc hết hạn hoặc không tìm thấy thông tin Admin!",
       });
-      return; // 👈 Tách return riêng ra để hàm trả về void
+      return; 
     }
 
     const { amount, batchId, targetType, targetId, reason } = req.body;

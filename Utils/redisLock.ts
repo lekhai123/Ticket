@@ -1,4 +1,3 @@
-// FILE: Utils/redisLock.ts
 import Redis from "ioredis";
 import crypto from "crypto";
 import dotenv from "dotenv";
@@ -9,7 +8,7 @@ const primaryUrl = process.env.REDIS_URL;
 const backupUrl = process.env.REDIS_URL_BACKUP;
 
 if (!primaryUrl) {
-  throw new Error("❌ Khai báo thiếu REDIS_URL trong file .env!");
+  throw new Error("Khai báo thiếu REDIS_URL trong file .env!");
 }
 
 const commonRedisOptions = {
@@ -29,7 +28,7 @@ const commonRedisOptions = {
 // 1. Khởi tạo Primary Redis
 export const redisPrimary = new Redis(primaryUrl, commonRedisOptions);
 
-// 2. Khởi tạo Backup Redis (nếu có khai báo REDIS_URL-BACKUP)
+// 2. Khởi tạo Backup Redis
 export const redisBackup = backupUrl
   ? new Redis(backupUrl, commonRedisOptions)
   : null;
@@ -38,20 +37,20 @@ let isPrimaryAlive = true;
 
 redisPrimary.on("connect", () => {
   isPrimaryAlive = true;
-  console.log("⚡ [REDIS PRIMARY]: Kết nối Upstash Redis Cloud thành công!");
+  console.log("[REDIS PRIMARY]: Kết nối Upstash Redis Cloud thành công!");
 });
 
 redisPrimary.on("error", (err) => {
   isPrimaryAlive = false;
-  console.error("⚠️ [REDIS PRIMARY WARNING]:", err.message);
+  console.error("[REDIS PRIMARY WARNING]:", err.message);
 });
 
 if (redisBackup) {
   redisBackup.on("connect", () => {
-    console.log("⚡ [REDIS BACKUP]: Kết nối Redis Cloud Dự Phòng sẵn sàng!");
+    console.log("[REDIS BACKUP]: Kết nối Redis Cloud Dự Phòng sẵn sàng!");
   });
   redisBackup.on("error", (err) => {
-    console.error("⚠️ [REDIS BACKUP WARNING]:", err.message);
+    console.error(" [REDIS BACKUP WARNING]:", err.message);
   });
 }
 
@@ -65,7 +64,7 @@ export class RedisLock {
     }
     if (redisBackup) {
       console.warn(
-        "🔄 [REDIS LOCK FAILOVER] Đang chuyển sang dùng Redis Backup!",
+        "[REDIS LOCK FAILOVER] Đang chuyển sang dùng Redis Backup!",
       );
       return redisBackup;
     }
@@ -73,7 +72,7 @@ export class RedisLock {
   }
 
   /**
-   * 🔒 Bắt Lock ghế (Chống race condition)
+   * Lock ghế (Chống race condition)
    */
   static async acquire(
     key: string,
@@ -98,7 +97,7 @@ export class RedisLock {
   }
 
   /**
-   * 🔓 Mở Lock an toàn bằng Lua Script (Atomic Operation)
+   * Mở Lock an toàn bằng Lua Script (Atomic Operation)
    */
   static async release(key: string, lockToken: string): Promise<boolean> {
     const luaScript = `

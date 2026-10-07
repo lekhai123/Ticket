@@ -1,4 +1,3 @@
-// FILE: Service/cloudinaryService.ts
 import { cloudinaryPrimary, cloudinaryBackup } from "../config/cloudinary";
 import { Readable } from "stream";
 import prisma from "../database/prismaClient";
@@ -47,7 +46,7 @@ export class CloudinaryService {
       return await this.uploadToInstance(cloudinaryPrimary, fileBuffer, userId);
     } catch (primaryError: any) {
       console.warn(
-        `⚠️ [CLOUDINARY WARNING] Primary Cloud bị lỗi (${primaryError.message}). Tự động failover sang Backup Cloud...`,
+        `[CLOUDINARY WARNING] Primary Cloud bị lỗi (${primaryError.message}). Tự động failover sang Backup Cloud...`,
       );
     }
 
@@ -56,7 +55,7 @@ export class CloudinaryService {
       return await this.uploadToInstance(cloudinaryBackup, fileBuffer, userId);
     } catch (backupError: any) {
       console.error(
-        "❌ [CLOUDINARY CRITICAL] Cả 2 tài khoản Cloudinary đều thất bại!",
+        "[CLOUDINARY CRITICAL] Cả 2 tài khoản Cloudinary đều thất bại!",
       );
       throw new Error(`Không thể upload avatar: ${backupError.message}`);
     }

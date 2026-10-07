@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
-import { JWT_SECRET } from "../config/jwt"; // 👈 Import từ file config chung
+import { JWT_SECRET } from "../config/jwt";
 
 export const authenticateToken = (
   req: Request,
@@ -19,7 +19,6 @@ export const authenticateToken = (
 
   jwt.verify(token, JWT_SECRET, (err: any, decoded: any) => {
     if (err) {
-      // 🛑 In log chính xác lỗi JWT trong Terminal VS Code
       console.log("❌ LỖI VERIFY JWT:", err.message);
       return res.status(401).json({
         success: false,

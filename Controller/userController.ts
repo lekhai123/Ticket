@@ -23,7 +23,7 @@ export class UserController {
   }
   static getMe = async (req: Request, res: Response, next: Function) => {
     try {
-      // 🎯 Lấy id/userId từ JWT Token
+      // Lấy id/userId từ JWT Token
       const user = (req as any).user;
       const userId = user?.id || user?.userId;
 

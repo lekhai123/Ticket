@@ -65,8 +65,8 @@ model OTP {
   id        Int      @id @default(autoincrement())
   email     String
   code      String   @db.VarChar(6)
-  type      OtpType  @default(REGISTER) // 👈 Bổ sung phân loại luồng
-  attempts  Int      @default(0)        // 👈 Bổ sung đếm số lần thử sai
+  type      OtpType  @default(REGISTER) 
+  attempts  Int      @default(0)        
   expiredAt DateTime
   createAt  DateTime @default(now())
 
@@ -80,26 +80,26 @@ enum Role {
 }
 
 enum TicketStatus {
-  HELD              // 1. Đang tạm giữ ghế bằng Redis Lock (3-5 phút chờ thanh toán)
-  PENDING           // 2. Đã tạo đơn giữ chỗ thành công, đang chờ thanh toán (Ví/VNPAY)
-  EXPIRED           // 3. Đã hết hạn giữ ghế/chờ thanh toán (Tự động nhả ghế lại cho xe)
-  CONFIRMED         // 4. Đã thanh toán thành công (Vé có hiệu lực)
-  USED              // 5. Khách đã lên xe / Nhà xe đã quét mã QR kiểm tra vé
-  CANCELED          // 6. Khách chủ động hủy vé (Có thể được hoàn tiền vào Ví)
-  REVOKED_BY_ADMIN  // 7. Admin thu hồi vé (Ví dụ: Chuyến xe bị hủy, gian lận)
+  HELD            
+  PENDING           
+  EXPIRED           
+  CONFIRMED         
+  USED              
+  CANCELED          
+  REVOKED_BY_ADMIN  
   CANCELLED
 }
 model AuditLog {
   id            String   @id @default(uuid())
-  requestId     String   // Tracing ID xuyên suốt luồng Request
+  requestId     String   
   userId        Int?
-  action        String   // VD: "BOOK_TICKET", "TOP_UP", "SYSTEM_GIFT_TICKET"
-  batchId       String?  // Mã nhóm chiến dịch (VD: "ERR_PROMO_2026_07_22") để thu hồi hàng loạt
-  resource      String   // Bảng/Entity bị tác động (VD: "Tickets", "Wallets")
-  resourceId    String   // ID của Entity
-  oldData       Json?    // Snapshot dữ liệu TRƯỚC biến động
-  newData       Json?    // Snapshot dữ liệu SAU biến động
-  isRevoked     Boolean  @default(false) // Trạng thái đã bị Admin thu hồi chưa
+  action        String   
+  batchId       String?  
+  resource      String  
+  resourceId    String  
+  oldData       Json?    
+  newData       Json?   
+  isRevoked     Boolean  @default(false) 
   ipAddress     String?
   createdAt     DateTime @default(now())
 

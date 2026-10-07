@@ -1,4 +1,3 @@
-// src/middlewares/walletGuard.ts
 import type { Request, Response, NextFunction } from "express";
 import { PrismaClient } from "@prisma/client";
 
@@ -33,8 +32,8 @@ export const checkWalletLock = async (
         code: "WALLET_LOCKED_OR_DEBT",
         message:
           balanceNum < 0
-            ? `⛔ Ví của bạn đang âm (${balanceNum.toLocaleString("vi-VN")} VNĐ). Vui lòng nạp tiền thanh toán khoản nợ để tiếp tục sử dụng web!`
-            : "⛔ Ví của bạn đang bị TẠM KHÓA do hệ thống phát hiện biến động bất thường. Vui lòng liên hệ Admin!",
+            ? ` Ví của bạn đang âm (${balanceNum.toLocaleString("vi-VN")} VNĐ). Vui lòng nạp tiền thanh toán khoản nợ để tiếp tục sử dụng web!`
+            : " Ví của bạn đang bị TẠM KHÓA do hệ thống phát hiện biến động bất thường. Vui lòng liên hệ Admin!",
         data: {
           currentBalance: balanceNum,
           isLocked: wallet.isLocked,

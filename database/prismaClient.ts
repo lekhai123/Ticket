@@ -1,9 +1,7 @@
-// FILE: database/prismaClient.ts
 import { PrismaClient } from "@prisma/client";
 import dotenv from "dotenv";
 import path from "path";
 
-// 1. Nạp file .env ngay lập tức trước khi PrismaClient được khởi tạo
 dotenv.config({ path: path.resolve(process.cwd(), ".env") });
 
 const dbUrl = process.env.DATABASE_URL;
@@ -12,7 +10,7 @@ if (!dbUrl) {
   throw new Error("DATABASE_URL chưa được khai báo trong file .env!");
 }
 
-// 2. Khởi tạo Instance Prisma Client gốc
+// Khởi tạo Instance Prisma Client gốc
 const basePrisma = new PrismaClient({
   datasources: {
     db: {
@@ -21,7 +19,7 @@ const basePrisma = new PrismaClient({
   },
 } as any);
 
-// 3. Bổ sung Security Layer cho AuditLog (Chỉ cho phép sửa 'isRevoked', cấm DELETE)
+//Bổ sung Security Layer cho AuditLog (Chỉ cho phép sửa 'isRevoked', cấm DELETE)
 export const prisma = basePrisma.$extends({
   query: {
     auditLog: {

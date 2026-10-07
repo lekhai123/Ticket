@@ -1,4 +1,3 @@
-// FILE: Services/otpService.ts
 import prisma from "../database/prismaClient";
 import { sendOtpEmail } from "../config/resend"; // 👈 Import hàm bạn đã viết sẵn trong resend.ts
 import { mailQueue } from "../queues/mailQueue";
@@ -30,7 +29,6 @@ export class OtpService {
       throw error;
     }
 
-    // Sinh mã OTP 6 chữ số
     const otpCode = crypto.randomInt(100000, 999999).toString();
     const expiredAt = new Date(now.getTime() + 5 * 60 * 1000);
 
@@ -47,12 +45,12 @@ export class OtpService {
       },
     });
 
-    // 🎯 PUSH JOB VÀO QUEUE THAY VÌ GỬI TRỰC TIẾP (Async Producer)
+    // PUSH JOB VÀO QUEUE THAY VÌ GỬI TRỰC TIẾP (Async Producer)
     await mailQueue.add(
       "send-otp-job",
       { email: cleanEmail, code: otpCode, type },
       {
-        // 🔄 Tự động thử lại 3 lần nếu gặp lỗi kết nối/Resend sập, thời gian chờ tăng dần (Exponential Backoff)
+        //Tự động thử lại 3 lần nếu gặp lỗi kết nối/Resend sập, thời gian chờ tăng dần (Exponential Backoff)
         attempts: 3,
         backoff: {
           type: "exponential",
@@ -70,7 +68,7 @@ export class OtpService {
     return newOtp;
   }
   /**
-   * 🎯 2. Verify mã OTP
+   * 2. Verify mã OTP
    */
   static async verifyOTPLogic(
     email: string,

@@ -1,9 +1,6 @@
 import prisma from "../database/prismaClient";
 
 export class WalletService {
-  /**
-   * 1. Lấy thông tin số dư ví của User
-   */
   static async getBalance(userId: number) {
     const wallet = await prisma.wallets.findUnique({
       where: { userId },
@@ -18,9 +15,6 @@ export class WalletService {
     return wallet;
   }
 
-  /**
-   * 2. Nạp / Tặng tiền vào ví bằng Atomic Operation + Ghi AuditLog lưu vết
-   */
   static async topUp(
     userId: number,
     amount: number,
@@ -32,7 +26,6 @@ export class WalletService {
     },
   ) {
     return await prisma.$transaction(async (tx) => {
-      // 1. Kiểm tra ví tồn tại
       const wallet = await tx.wallets.findUnique({
         where: { userId },
       });
@@ -43,7 +36,6 @@ export class WalletService {
         throw error;
       }
 
-      // 2. Nạp tiền Atomic
       const updatedWallet = await tx.wallets.update({
         where: { userId },
         data: {
@@ -53,7 +45,6 @@ export class WalletService {
         },
       });
 
-      // 3. Ghi AuditLog lưu vết biến động
       await tx.auditLog.create({
         data: {
           requestId: options?.requestId || `TOPUP_${Date.now()}`,
@@ -77,9 +68,6 @@ export class WalletService {
     });
   }
 
-  /**
-   * 3. Lấy lịch sử giao dịch ví từ AuditLog (Hỗ trợ phân trang & tham số mặc định)
-   */
   static async getWalletTransactions(
     userId: number,
     params: { page?: number; limit?: number } = {},
@@ -88,7 +76,6 @@ export class WalletService {
     const limit = params.limit || 10;
     const skip = (page - 1) * limit;
 
-    // 1. Lấy thông tin ví
     const wallet = await prisma.wallets.findUnique({
       where: { userId },
     });
@@ -109,10 +96,8 @@ export class WalletService {
       };
     }
 
-    // 2. Điều kiện Query linh hoạt: Đã cập nhật khớp 100% tên các Action mới
     const whereCondition = {
       OR: [
-        // TH1: Log gắn trực tiếp với userId của User này
         {
           userId: userId,
           action: {
@@ -121,21 +106,20 @@ export class WalletService {
               "BOOK_TICKET_PAYMENT",
               "CANCEL_TICKET_REFUND",
               "SYSTEM_GIFT_BALANCE",
-              "MASS_GIFT_RECEIVED", // 🎯 BỔ SUNG: Tiền quà tặng nhận từ Admin
-              "MASS_GIFT_REVOKED", // 🎯 BỔ SUNG: Tiền quà tặng bị thu hồi
-              "REFUND_TICKET_PAYMENT", // 🎯 BỔ SUNG: Hoàn tiền mua vé/thu hồi vé
+              "MASS_GIFT_RECEIVED",
+              "MASS_GIFT_REVOKED",
+              "REFUND_TICKET_PAYMENT",
             ],
           },
         },
-        // TH2: Log do Admin tác động lên ví này (Resource = Wallets, resourceId = wallet.id)
         {
           resource: "Wallets",
           resourceId: walletIdStr,
           action: {
             in: [
               "MASS_GIFT_WALLET",
-              "MASS_GIFT_RECEIVED", // 🎯 BỔ SUNG
-              "MASS_GIFT_REVOKED", // 🎯 BỔ SUNG
+              "MASS_GIFT_RECEIVED",
+              "MASS_GIFT_REVOKED",
               "REVOKE_MASS_GIFT",
               "REVOKE_BATCH",
               "ADMIN_ADJUST_BALANCE",

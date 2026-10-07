@@ -1,8 +1,6 @@
-// FILE: Router/adminRoutes.ts
 import type { Request, Response } from "express";
 import { Router } from "express";
 import { validate } from "../Middleware/validateMiddleware";
-// 🎯 Import cặp Middleware chuẩn từ authMiddleware
 import { authenticateToken, requireAdmin } from "../Middleware/authMiddleware";
 import { AdminController } from "../Controller/adminController";
 import { RevocationService } from "../Service/revocationService";
@@ -77,7 +75,6 @@ router.post("/reconciliation/trigger", async (req: Request, res: Response) => {
   }
 });
 
-// 🎯 ROUTE MỞ KHÓA VÍ: Thay verifyToken bằng authenticateToken + requireAdmin
 router.patch(
   "/wallets/:userId/unlock",
   authenticateToken,

@@ -1,14 +1,13 @@
-// FILE: Controllers/bookingController.ts
 import type { Request, Response } from "express";
 import { BookingService } from "../Service/bookingService";
 
 export class BookingController {
   /**
-   * POST /api/bookings - Giữ chỗ & Đặt vé
+   Giữ chỗ & Đặt vé
    */
   static async createBooking(req: Request, res: Response) {
     try {
-      // 🎯 Lấy userId an toàn từ Token (Do authenticateToken gắn vào)
+      //Lấy userId an toàn từ Token (Do authenticateToken gắn vào)
       const userId = (req as any).user?.id || (req as any).user?.userId;
 
       if (!userId) {
@@ -42,7 +41,7 @@ export class BookingController {
   }
 
   /**
-   * PATCH /api/bookings/:id/cancel - Khách hủy vé
+    Khách hủy vé
    */
   static async cancelBooking(req: Request, res: Response) {
     try {
@@ -65,7 +64,7 @@ export class BookingController {
   }
 
   /**
-   * PATCH /api/admin/bookings/:id/revoke - Admin thu hồi vé
+    Admin thu hồi vé
    */
   static async adminRevokeBooking(req: Request, res: Response) {
     try {

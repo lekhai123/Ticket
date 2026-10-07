@@ -1,4 +1,3 @@
-// FILE: Middleware/idempotencyMiddleware.ts
 import type { Request, Response, NextFunction } from "express";
 import { redisPrimary, redisBackup } from "../Utils/redisLock";
 import type Redis from "ioredis";
@@ -48,7 +47,7 @@ export const idempotency = (ttlSeconds: number = 86400) => {
         }
       } catch (error: any) {
         console.warn(
-          `⚠️ [IDEMPOTENCY WARNING] Lỗi đọc Redis: ${error.message}`,
+          ` [IDEMPOTENCY WARNING] Lỗi đọc Redis: ${error.message}`,
         );
       }
     }
@@ -67,9 +66,44 @@ export const idempotency = (ttlSeconds: number = 86400) => {
             )
             .catch((err) =>
               console.warn(
-                `⚠️ [IDEMPOTENCY WARNING] Lỗi ghi Redis: ${err.message}`,
+                ` [IDEMPOTENCY WARNING] Lỗi ghi Redis: ${err.message}`,
               ),
             );
+        }
+      }
+      return originalJson(body);
+    };
+
+    next();
+  };
+};
+export const cacheResponse = (ttlSeconds: number = 60) => {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    const cacheKey = `route_cache:${req.originalUrl}`;
+    const activeRedis = getActiveRedis();
+
+    if (activeRedis) {
+      try {
+        const cached = await activeRedis.get(cacheKey);
+        if (cached) {
+          const { statusCode, body } = JSON.parse(cached);
+          return res.status(statusCode).json(body);
+        }
+      } catch (err) {}
+    }
+
+    const originalJson = res.json.bind(res);
+    res.json = (body: any) => {
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        const currentRedis = getActiveRedis();
+        if (currentRedis) {
+          currentRedis
+            .setex(
+              cacheKey,
+              ttlSeconds,
+              JSON.stringify({ statusCode: res.statusCode, body }),
+            )
+            .catch(() => {});
         }
       }
       return originalJson(body);

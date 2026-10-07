@@ -1,4 +1,3 @@
-// FILE: Middleware/errorMiddleware.ts
 import type { Request, Response, NextFunction } from "express";
 
 export const globalErrorHandler = (
@@ -7,7 +6,7 @@ export const globalErrorHandler = (
   res: Response,
   next: NextFunction,
 ): void => {
-  console.error("❌ [SERVER ERROR]:", err);
+  console.error(" [SERVER ERROR]:", err);
 
   let statusCode = err.statusCode || 500;
   let message =
@@ -21,7 +20,7 @@ export const globalErrorHandler = (
   res.status(statusCode).json({
     success: false,
     message: message,
-    details: err.details || undefined, // 🌟 Thêm dòng này để trả về chi tiết lỗi từ Zod
+    details: err.details || undefined, 
     stack: process.env.NODE_ENV === "development" ? err.stack : undefined,
   });
 };

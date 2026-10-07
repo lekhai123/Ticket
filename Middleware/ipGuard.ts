@@ -1,4 +1,3 @@
-// src/middlewares/ipGuard.ts
 import type { Request, Response, NextFunction } from "express";
 import { PrismaClient } from "@prisma/client";
 
@@ -28,7 +27,7 @@ export const checkIpBlacklist = async (
       return res.status(403).json({
         success: false,
         code: "IP_BLOCKED",
-        message: `⛔ IP của bạn (${clientIp}) bị hạn chế đăng ký tài khoản mới do liên quan đến khoản nợ/vi phạm chưa xử lý.`,
+        message: `IP của bạn (${clientIp}) bị hạn chế đăng ký tài khoản mới do liên quan đến khoản nợ/vi phạm chưa xử lý.`,
       });
     }
 

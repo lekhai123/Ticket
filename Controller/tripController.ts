@@ -4,8 +4,7 @@ import { TripService } from "../Service/tripService";
 
 export class TripController {
   /**
-   * POST /api/trips
-   * Tạo mới chuyến xe thông minh (Tự động sinh Vector)
+   * Tạo mới chuyến xe(Tự động sinh Vector)
    */
   static async createTrip(req: Request, res: Response): Promise<void> {
     const { route, description, departureAt, price, totalSeats } = req.body;
@@ -26,7 +25,6 @@ export class TripController {
   }
 
   /**
-   * GET /api/trips
    * Lấy danh sách toàn bộ chuyến xe thông thường
    */
   static async getAllTrips(req: Request, res: Response): Promise<void> {
@@ -38,8 +36,7 @@ export class TripController {
   }
 
   /**
-   * GET /api/trips/search-ai?query=...&limit=...
-   * 🌟 Tìm kiếm chuyến xe thông minh bằng ngôn ngữ tự nhiên
+   * Tìm kiếm chuyến xe thông minh bằng ngôn ngữ tự nhiên
    */
   static async searchSemantic(req: Request, res: Response): Promise<void> {
     try {
@@ -67,14 +64,12 @@ export class TripController {
   }
 
   /**
-   * GET /api/trips/:id
    * Lấy chi tiết 1 chuyến xe
    */
   static async getTripById(req: Request, res: Response): Promise<void> {
     // req.params.id đã được z.coerce.number() ép sang kiểu number
     const id = Number(req.params.id);
 
-    // Lỗi không tìm thấy (404) nên để TripService chủ động throw CustomError
     const trip = await TripService.getTripByIdLogic(id);
 
     res.status(200).json({
@@ -84,7 +79,6 @@ export class TripController {
   }
 
   /**
-   * PATCH / PUT /api/trips/:id
    * Cập nhật thông tin chuyến xe
    */
   static async updateTrip(req: Request, res: Response): Promise<void> {
@@ -100,7 +94,6 @@ export class TripController {
   }
 
   /**
-   * DELETE /api/trips/:id
    * Xóa chuyến xe
    */
   static async deleteTrip(req: Request, res: Response): Promise<void> {

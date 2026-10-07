@@ -1,4 +1,3 @@
-// FILE: Controllers/authController.ts
 import type { Request, Response } from "express";
 import { AuthService } from "../Service/authService";
 
@@ -11,10 +10,10 @@ export class AuthController {
       const result = await AuthService.login(req.body);
       const { refreshToken, accessToken, user } = result;
 
-      // 🎯 Set Refresh Token vào HttpOnly Cookie
+      // Set Refresh Token vào HttpOnly Cookie
       res.cookie("refreshToken", refreshToken, {
         httpOnly: true, // Chống XSS (JS phía Frontend không thể đọc)
-        secure: process.env.NODE_ENV === "production", // Bật true nếu chạy HTTPS
+        secure: process.env.NODE_ENV === "production", 
         sameSite: "lax",
         maxAge: 7 * 24 * 60 * 60 * 1000, // Hạn 7 ngày
       });

@@ -3,12 +3,10 @@ import "dotenv/config";
 import cookieParser from "cookie-parser";
 import cors from "cors";
 
-// Imports Middlewares
 import { distributedTracing } from "./Middleware/tracingMiddleware";
 import { globalErrorHandler } from "./Middleware/errorMiddleware";
 import { initReconciliationCron } from "./jobs/reconciliationJob";
 
-// Imports Routes
 import otpRoutes from "./Router/otpRoutes";
 import tripRoutes from "./Router/tripRoute";
 import userRoutes from "./Router/userRoutes";
@@ -20,19 +18,17 @@ import bookingRoutes from "./Router/bookingRoutes";
 
 const app = express();
 
-// Danh sách origin được phép truy cập (Localhost + Domain Frontend Vercel của bạn)
 const allowedOrigins = [
   "http://localhost:5173",
-  process.env.FRONTEND_URL || "", // Ví dụ: https://your-frontend.vercel.app
+  process.env.FRONTEND_URL || "",
 ].filter(Boolean);
 
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Cho phép request không có origin hoặc nằm trong danh sách
       if (
         !origin ||
-        (origin && origin.endsWith(".vercel.app")) || // 👈 Thêm dòng này để cho phép Vercel
+        (origin && origin.endsWith(".vercel.app")) ||
         allowedOrigins.includes(origin) ||
         process.env.NODE_ENV !== "production"
       ) {
@@ -56,10 +52,8 @@ app.use(
 app.use(express.json());
 app.use(cookieParser());
 
-// Distributed Tracing
 app.use(distributedTracing);
 
-// 3. Đăng ký các Routes (Đã sửa lại /api/bookings có dấu /)
 app.use("/api/otp", otpRoutes);
 app.use("/api/trips", tripRoutes);
 app.use("/api/users", userRoutes);
@@ -67,17 +61,14 @@ app.use("/api/wallets", walletRoutes);
 app.use("/api/tickets", ticketRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/auth", authRoutes);
-app.use("/api/bookings", bookingRoutes); // 👈 Đã sửa lỗi thiếu dấu /
+app.use("/api/bookings", bookingRoutes);
 
-// 4. Global Error Handler
 app.use(globalErrorHandler);
 
-// Chỉ chạy Cron job ở môi trường server truyền thống / local (trên Vercel Serverless cron job sẽ không duy trì được vòng lặp vô hạn)
 if (process.env.NODE_ENV !== "production" || !process.env.VERCEL) {
   initReconciliationCron();
 }
 
-// Chỉ listen port khi chạy local độc lập
 if (process.env.NODE_ENV !== "production" || !process.env.VERCEL) {
   const PORT = process.env.PORT || 3000;
   app.listen(PORT, () => {
@@ -85,5 +76,4 @@ if (process.env.NODE_ENV !== "production" || !process.env.VERCEL) {
   });
 }
 
-// 🌟 BẮT BUỘC ĐỂ VERCEL XỬ LÝ REQUEST
 export default app;

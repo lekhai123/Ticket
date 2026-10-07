@@ -40,7 +40,7 @@ export class AdminService {
       _sum: { balance: true },
     });
 
-    // 🌟 6. TÍNH TOP TUYẾN ĐƯỜNG (Thống kê số lượng vé theo tuyến)
+    //  6. TÍNH TOP TUYẾN ĐƯỜNG (Thống kê số lượng vé theo tuyến)
     const routeMap: Record<string, number> = {};
     confirmedTickets.forEach((ticket) => {
       const routeName = ticket.trip?.route || "Không xác định";
@@ -52,7 +52,7 @@ export class AdminService {
       tickets,
     }));
 
-    // 🌟 7. TẠO DỮ LIỆU MẪU CHO BIỂU ĐỒ DOANH THU 7 NGÀY (Hoặc query theo ngày tạo vé)
+    // 7. TẠO DỮ LIỆU MẪU CHO BIỂU ĐỒ DOANH THU 7 NGÀY (Hoặc query theo ngày tạo vé)
     const revenueChart = [
       { date: "T2", amount: totalRevenue * 0.1 },
       { date: "T3", amount: totalRevenue * 0.15 },
@@ -130,9 +130,6 @@ export class AdminService {
       },
     };
   }
-  // FILE: Service/adminService.ts
-
-  // FILE: Service/adminService.ts
 
   static async executeMassGift(data: {
     adminUserId: number;
@@ -189,8 +186,6 @@ export class AdminService {
           },
         },
       });
-
-      // 🟢 Chuyển Decimal sang number bằng Number(...) để hết lỗi TS2322
       const userAuditLogs = validUsers.map((u) => {
         const oldBalance = Number(u.wallet!.balance); // 🎯 Convert Decimal -> number ở đây!
         const newBalance = oldBalance + data.amount;
@@ -272,8 +267,8 @@ export class AdminService {
       whereCondition.userId = params.userId;
     }
 
-    // 🎯 BỔ SUNG: Nếu Admin đang xem trang AuditLog tổng quan (Không filter theo userId hay action cụ thể)
-    // Lọc bỏ bớt các log cá nhân nhỏ lẻ để màn hình Admin sạch đẹp!
+    // Nếu Admin đang xem trang AuditLog tổng quan (Không filter theo userId hay action cụ thể)
+    // Lọc bỏ bớt các log cá nhân nhỏ lẻ để màn hình Admin sạch 
     if (!params.userId && !params.action) {
       whereCondition.action = {
         notIn: ["MASS_GIFT_RECEIVED", "MASS_GIFT_REVOKED"],
@@ -300,7 +295,7 @@ export class AdminService {
       },
     };
   }
-  // Trong AdminService.ts
+
   static async getHealthStatus() {
     const startTime = Date.now();
 

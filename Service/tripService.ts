@@ -1,4 +1,3 @@
-// FILE: Service/tripService.ts
 import prisma from "../database/prismaClient";
 import { MultiLevelCache } from "./cacheService";
 import { AIProxyService } from "./aiProxy.service";
@@ -23,7 +22,7 @@ export class TripService {
       ...trip,
       totalSeats,
       availableSeats,
-      bookedSeatNumbers, // Danh sách các số ghế đã có người giữ/mua
+      bookedSeatNumbers,
     };
   }
 
@@ -62,15 +61,15 @@ export class TripService {
   }
 
   static async getAllTripsLogic() {
-    const now = new Date();
+    const cacheKey = "trips:all:active";
 
-    // Query trực tiếp các chuyến có giờ khởi hành trong tương lai
+    // Kiểm tra Cache tầng L1 RAM / L2 Redis
+    const cached = await MultiLevelCache.get(cacheKey);
+    if (cached) return cached;
+
+    const now = new Date();
     const trips = await prisma.trips.findMany({
-      where: {
-        departureAt: {
-          gt: now, // 👈 Chỉ lấy các chuyến chưa chạy
-        },
-      },
+      where: { departureAt: { gt: now } },
       orderBy: { departureAt: "asc" },
       include: {
         tickets: {
@@ -80,9 +79,13 @@ export class TripService {
       },
     });
 
-    return trips.map((trip) => this.formatTripWithSeats(trip));
-  }
+    const formatted = trips.map((trip) => this.formatTripWithSeats(trip));
 
+    //Lưu vào Cache 60 giây
+    await MultiLevelCache.set(cacheKey, formatted, 60);
+
+    return formatted;
+  }
   static async getTripByIdLogic(id: number) {
     const cacheKey = `trips:detail:${id}`;
     const cachedTrip = await MultiLevelCache.get(cacheKey);
@@ -186,7 +189,7 @@ export class TripService {
     const safePrompt = typeof prompt === "string" ? prompt : "";
     const cleanPrompt = safePrompt.trim().toLowerCase();
 
-    // 1. Nếu không nhập gì hoặc yêu cầu xem hết
+    // Nếu không nhập gì hoặc yêu cầu xem hết
     if (
       !cleanPrompt ||
       cleanPrompt.includes("tất cả") ||
@@ -196,8 +199,7 @@ export class TripService {
       return await this.getAllTripsLogic();
     }
 
-    // 2. BƯỚC 1: Tìm kiếm chính xác / gần đúng theo Text (ILIKE) trước
-    // Giúp các từ khóa cụ thể như "Đà Nẵng", "Hải Phòng", "Nha Trang" lọc chính xác 100%
+    // Tìm kiếm chính xác / gần đúng theo Text (ILIKE) trước
     const keywordTrips = await prisma.trips.findMany({
       where: {
         departureAt: { gt: new Date() },
@@ -221,11 +223,11 @@ export class TripService {
       return keywordTrips.map((trip) => this.formatTripWithSeats(trip));
     }
 
-    // 3. BƯỚC 2: Nếu người dùng nhập câu tự nhiên ("tìm xe đi sáng mai giá rẻ") -> Dùng Semantic Search
+    //Nếu người dùng nhập câu tự nhiên ("tìm xe đi sáng mai giá rẻ") -> Dùng Semantic Search
     const queryVector = await this.getEmbedding(cleanPrompt);
     const vectorString = `[${queryVector.join(",")}]`;
 
-    // 🎯 NÂNG NGƯỠNG LÊN 0.70 (Tránh bắt nhầm các địa danh không liên quan)
+    //NÂNG NGƯỠNG LÊN 0.70 (Tránh bắt nhầm các địa danh không liên quan)
     const SIMILARITY_THRESHOLD = 0.7;
 
     const trips: any[] = await prisma.$queryRaw`
@@ -239,7 +241,7 @@ export class TripService {
   `;
 
     if (!trips || trips.length === 0) {
-      return []; // Trả về rỗng thay vì hiện bừa chuyến Hà Nội - Hải Phòng
+      return []; // Trả về rỗng thay vì hiện bừa chuyến
     }
 
     // Bổ sung số ghế thực tế cho các chuyến tìm được

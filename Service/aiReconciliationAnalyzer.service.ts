@@ -1,4 +1,3 @@
-// src/services/aiReconciliationAnalyzer.service.ts
 import { AIProxyService } from "./aiProxy.service";
 import type { MismatchDetail } from "../Service/reconciliationService";
 
@@ -41,7 +40,6 @@ YÊU CẦU ĐẦU RA (Chỉ trả về JSON thuần, không kèm Markdown wrappe
     try {
       const rawAiResponse = await AIProxyService.generateWithFallback(prompt);
 
-      // Clean JSON string if wrapped in markdown
       const cleanedJson = rawAiResponse
         .replace(/```json/g, "")
         .replace(/```/g, "")

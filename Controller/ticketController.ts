@@ -5,7 +5,7 @@ export class TicketController {
   // 1. Đặt vé chuyến xe (Transaction trừ tiền ví + tạo vé + Redis Lock)
   static async bookTicket(req: Request, res: Response): Promise<Response> {
     try {
-      // 🎯 LẤY USER ID TỪ REQ.USER (JWT Auth Middleware)
+      // LẤY USER ID TỪ REQ.USER (JWT Auth Middleware)
       const userId = (req as any).user?.id || (req as any).user?.userId;
 
       if (!userId) {
@@ -71,7 +71,7 @@ export class TicketController {
   static async cancelTicket(req: Request, res: Response): Promise<Response> {
     try {
       const ticketId = Number(req.params.ticketId);
-      // 🎯 Lấy userId từ Token thay vì req.body để tránh kẻ xấu hủy nhầm vé người khác
+      // Lấy userId từ Token thay vì req.body để tránh kẻ xấu hủy nhầm vé người khác
       const userId =
         (req as any).user?.id || (req as any).user?.userId || req.body.userId;
 

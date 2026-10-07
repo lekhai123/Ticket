@@ -1,4 +1,3 @@
-// FILE: Services/revocationService.ts
 import prisma from "../database/prismaClient";
 import NodeCache from "node-cache";
 const myCache = new NodeCache({ stdTTL: 300 });
@@ -10,7 +9,7 @@ export class RevocationService {
     const cleanBatchId = batchId.trim();
 
     return await prisma.$transaction(async (tx) => {
-      // 1. Lấy toàn bộ Log chưa bị Revoke thuộc Batch
+      //Lấy toàn bộ Log chưa bị Revoke thuộc Batch
       const logs = await tx.auditLog.findMany({
         where: {
           batchId: { equals: cleanBatchId, mode: "insensitive" },
@@ -33,10 +32,7 @@ export class RevocationService {
             ? JSON.parse(log.newData)
             : log.newData
         ) as any;
-
-        // =========================================================================
-        // 🎯 CASE 1: THU HỒI TIỀN TẶNG HÀNG LOẠT (MASS GIFT WALLET)
-        // =========================================================================
+        //CASE 1: THU HỒI TIỀN TẶNG HÀNG LOẠT (MASS GIFT WALLET)
         if (log.action === "MASS_GIFT_EXECUTE") {
           const giftedAmount = Number(newDataObj?.amountPerUser || 0);
           const targetUserIds: number[] = newDataObj?.affectedUserIds || [];
@@ -52,13 +48,13 @@ export class RevocationService {
               data: { balance: { decrement: giftedAmount } },
             });
 
-            // b. 🎯 BỔ SUNG: Lấy thông tin ví mới để ghi AuditLog cho TỪNG USER
+            // b.Lấy thông tin ví mới để ghi AuditLog cho TỪNG USER
             const affectedWallets = await tx.wallets.findMany({
               where: { userId: { in: targetUserIds } },
               select: { id: true, userId: true, balance: true },
             });
 
-            // c. 🎯 BỔ SUNG: Tạo Log trừ tiền hiển thị trên Lịch sử Ví của User
+            // c.Tạo Log trừ tiền hiển thị trên Lịch sử Ví của User
             const revokeWalletLogs = affectedWallets.map((w) => {
               const currentBalance = Number(w.balance);
               return {
@@ -86,9 +82,7 @@ export class RevocationService {
           }
         }
 
-        // =========================================================================
-        // 🎯 CASE 2: THU HỒI MUA VÉ / CẤP VÉ LỖI HỆ THỐNG (TICKETS)
-        // =========================================================================
+        //CASE 2: THU HỒI MUA VÉ / CẤP VÉ LỖI HỆ THỐNG (TICKETS)
         else if (
           log.action === "BOOK_TICKET_PAYMENT" ||
           log.action === "BOOK_TICKET_BATCH" ||
@@ -115,7 +109,7 @@ export class RevocationService {
             if (ticketsToRevoke.length > 0) {
               const ticketIds = ticketsToRevoke.map((t) => t.id);
 
-              // a. Chuyển trạng thái vé sang REVOKED_BY_ADMIN (Không xóa hẳn khỏi CSDL)
+              // a. Chuyển trạng thái vé sang REVOKED_BY_ADMIN
               await tx.tickets.updateMany({
                 where: { id: { in: ticketIds } },
                 data: { status: "REVOKED_BY_ADMIN" },
@@ -143,7 +137,7 @@ export class RevocationService {
 
                 const currentBalance = Number(updatedWallet.balance);
 
-                // 🎯 Tạo Log hoàn tiền hiển thị trên Lịch sử Ví
+                //Tạo Log hoàn tiền hiển thị trên Lịch sử Ví
                 await tx.auditLog.create({
                   data: {
                     requestId: `REFUND_${Date.now()}_${logUserId}`,
@@ -154,7 +148,7 @@ export class RevocationService {
                     resourceId: String(updatedWallet.id),
                     oldData: { balance: currentBalance - actualPaidAmount },
                     newData: {
-                      amount: actualPaidAmount, // Số dương (+), hiển thị màu xanh
+                      amount: actualPaidAmount,
                       description: `Hoàn tiền ${ticketsToRevoke.length} vé chuyến #${tripId} (Thu hồi đợt lỗi hệ thống)`,
                       newBalance: currentBalance,
                       tripId,
@@ -170,14 +164,13 @@ export class RevocationService {
           }
         }
 
-        // Đánh dấu dòng log này đã bị Thu hồi
         await tx.auditLog.update({
           where: { id: log.id },
           data: { isRevoked: true },
         });
       }
 
-      // 3. Ghi lại Summary Audit Log cho Admin
+      // Ghi lại Summary Audit Log cho Admin
       await tx.auditLog.create({
         data: {
           requestId: `REVOKE_SUMMARY_${Date.now()}`,
