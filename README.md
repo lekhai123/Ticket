@@ -1,3 +1,5 @@
+
+```text
 Hệ Thống Đặt Vé Phân Tán (High Availability, Dual Redis & AI Semantic Search)
 
 Hệ thống đặt vé xe trực tuyến toàn diện theo mô hình kiến trúc Modular Monolith kết hợp giao diện Web App. Backend vận hành trên nền tảng Node.js, Express, TypeScript và PostgreSQL (Prisma ORM), tích hợp cơ chế Dual Redis Cluster, Multi-Level Cache, Redis Distributed Lock, BullMQ Queue, Gemini AI Multi-Key Failover và Đối soát tài chính tự động (Financial Reconciliation).  
@@ -39,7 +41,8 @@ Hệ thống đặt vé xe trực tuyến toàn diện theo mô hình kiến tr�
 
  ```
 
-2. Tính Năng Kỹ Thuật Trọng TâmDual Redis & Auto-Failover (High Availability): 
+2. Tính Năng Kỹ Thuật Trọng TâmDual Redis & Auto-Failover (High Availability):
+```text 
 Thiết lập song song cụm Redis chính và dự phòng. Khi node Primary gặp sự cố, hệ thống tự động failover sang node Backup giúp ứng dụng không bao giờ gián đoạn dịch vụ.  
 
 Multi-Level Cache (L1 RAM + L2 Dual Redis): Kết hợp bộ nhớ RAM cục bộ và Redis phân tán, hạ độ trễ truy vấn các danh mục chuyến xe từ mức hàng nghìn mili-giây xuống ngưỡng tức thì.
@@ -53,6 +56,7 @@ Hàng Đợi Gửi OTP BullMQ: Đẩy tác vụ gửi mã xác thực vào Redis
 Tìm Kiếm Ngữ Nghĩa & Gemini AI Failover: Hỗ trợ tìm chuyến bằng ngôn ngữ tự nhiên thông qua vector embeddings kết hợp cơ chế tự xoay vòng API Key dự phòng.
 
 Đối Soát Tài Chính Tự Động (Auto-Reconciliation): Đối chiếu số dư ví người dùng với toàn bộ lịch sử giao dịch và Audit Logs, tự động phát hiện và cảnh báo sai lệch dòng tiền.
+```
 
 3. Cấu Trúc Thư Mục Dự Án
 ```text
@@ -125,7 +129,7 @@ Tìm Kiếm Ngữ Nghĩa & Gemini AI Failover: Hỗ trợ tìm chuyến bằng n
 4. Cấu Hình Môi Trường (.env)
 
 Tạo file .env tại thư mục gốc của backend và điền các biến cấu hình:   
-``text
+```text
 
 DATABASE_URL="postgresql://postgres:your_password@your_host:5432/your_database"
 
@@ -220,4 +224,5 @@ Cloudinary Pipeline Fallback: Đánh giá độ an toàn luồng upload ảnh đ
 Bảo Vệ Số Dư Ví: Xác nhận hệ thống chặn các giao dịch đặt vé vượt quá số dư khả dụng.
 
 Teardown Dữ Liệu: Tự động hủy vé và đưa ghế test về lại trạng thái trống sau khi kiểm thử xong.
+```
 ```
