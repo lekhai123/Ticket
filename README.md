@@ -1,11 +1,9 @@
-
 ```text
 Hệ Thống Đặt Vé Phân Tán (High Availability, Dual Redis & AI Semantic Search)
 
-Hệ thống đặt vé xe trực tuyến toàn diện theo mô hình kiến trúc Modular Monolith kết hợp giao diện Web App. Backend vận hành trên nền tảng Node.js, Express, TypeScript và PostgreSQL (Prisma ORM), tích hợp cơ chế Dual Redis Cluster, Multi-Level Cache, Redis Distributed Lock, BullMQ Queue, Gemini AI Multi-Key Failover và Đối soát tài chính tự động (Financial Reconciliation).  
+Hệ thống đặt vé xe trực tuyến toàn diện theo mô hình kiến trúc Modular Monolith kết hợp giao diện Web App. Backend vận hành trên nền tảng Node.js, Express, TypeScript và PostgreSQL (Prisma ORM), tích hợp cơ chế Dual Redis Cluster, Multi-Level Cache, Redis Distributed Lock, BullMQ Queue, Gemini AI Multi-Key Failover và Đối soát tài chính tự động (Financial Reconciliation).
 
 1. Kiến Trúc & Sơ Đồ Luồng Dữ Liệu (System Architecture)
-```text
 
 
 [ Khách hàng / Quản trị viên ]
@@ -39,19 +37,20 @@ Hệ thống đặt vé xe trực tuyến toàn diện theo mô hình kiến tr�
  ├── Cloudinary Storage (Dual Cloud Fallback)
  └── Gemini Vector Engine (Tìm kiếm ngữ nghĩa theo embedding)
 
- ```
+```
 
 2. Tính Năng Kỹ Thuật Trọng TâmDual Redis & Auto-Failover (High Availability):
-```text 
-Thiết lập song song cụm Redis chính và dự phòng. Khi node Primary gặp sự cố, hệ thống tự động failover sang node Backup giúp ứng dụng không bao giờ gián đoạn dịch vụ.  
+
+```text
+Thiết lập song song cụm Redis chính và dự phòng. Khi node Primary gặp sự cố, hệ thống tự động failover sang node Backup giúp ứng dụng không bao giờ gián đoạn dịch vụ.
 
 Multi-Level Cache (L1 RAM + L2 Dual Redis): Kết hợp bộ nhớ RAM cục bộ và Redis phân tán, hạ độ trễ truy vấn các danh mục chuyến xe từ mức hàng nghìn mili-giây xuống ngưỡng tức thì.
 
 Redis Distributed Lock (Chống Race Condition): Sử dụng khóa phân tán kết hợp Transaction nguyên tử (prisma.$transaction) đảm bảo an toàn tuyệt đối khi nhiều người cùng đặt chung một ghế tại cùng một thời điểm.
 
-Tính Bất Biến Giao Dịch (Idempotency Guard): Bắt và ghi nhớ kết quả qua header x-idempotency-key, loại bỏ rủi ro trừ tiền ví hoặc tạo đơn trùng lặp.  
+Tính Bất Biến Giao Dịch (Idempotency Guard): Bắt và ghi nhớ kết quả qua header x-idempotency-key, loại bỏ rủi ro trừ tiền ví hoặc tạo đơn trùng lặp.
 
-Hàng Đợi Gửi OTP BullMQ: Đẩy tác vụ gửi mã xác thực vào Redis Queue non-blocking giúp phản hồi nhanh chóng mà không bị phụ thuộc vào độ trễ của mạng gửi email bên thứ ba.   
+Hàng Đợi Gửi OTP BullMQ: Đẩy tác vụ gửi mã xác thực vào Redis Queue non-blocking giúp phản hồi nhanh chóng mà không bị phụ thuộc vào độ trễ của mạng gửi email bên thứ ba.
 
 Tìm Kiếm Ngữ Nghĩa & Gemini AI Failover: Hỗ trợ tìm chuyến bằng ngôn ngữ tự nhiên thông qua vector embeddings kết hợp cơ chế tự xoay vòng API Key dự phòng.
 
@@ -59,6 +58,7 @@ Tìm Kiếm Ngữ Nghĩa & Gemini AI Failover: Hỗ trợ tìm chuyến bằng n
 ```
 
 3. Cấu Trúc Thư Mục Dự Án
+
 ```text
 
 ├── api/
@@ -126,9 +126,11 @@ Tìm Kiếm Ngữ Nghĩa & Gemini AI Failover: Hỗ trợ tìm chuyến bằng n
 ├── test-all.ts                  # Bộ kiểm thử tích hợp tự động
 └── tsconfig.json                # Cấu hình TypeScript
 ```
+
 4. Cấu Hình Môi Trường (.env)
 
-Tạo file .env tại thư mục gốc của backend và điền các biến cấu hình:   
+Tạo file .env tại thư mục gốc của backend và điền các biến cấu hình:
+
 ```text
 
 DATABASE_URL="postgresql://postgres:your_password@your_host:5432/your_database"
@@ -158,6 +160,7 @@ FRONTEND_URL="https://ticket-app-domain.com"
 ```
 
 5. Hướng Dẫn Cài Đặt & Chạy Hệ Thống
+
 ```text
 5.1. Khởi Chạy Backend
 Cài đặt các gói thư viện:
@@ -186,13 +189,14 @@ Cài đặt các gói thư viện cho Frontend:
         npm install
 
 Khởi động máy chủ giao diện:
-     
+
         npm run dev
 
 Ứng dụng Frontend hiển thị tại: http://localhost:5173
 ```
 
 6. Kiểm Thử Tự Động (Integration Test Suite)
+
 ```text
 
 Dự án có sẵn script test-all.ts để kiểm tra toàn bộ luồng vận hành từ đầu đến cuối một cách độc lập:
@@ -225,4 +229,7 @@ Bảo Vệ Số Dư Ví: Xác nhận hệ thống chặn các giao dịch đặt
 
 Teardown Dữ Liệu: Tự động hủy vé và đưa ghế test về lại trạng thái trống sau khi kiểm thử xong.
 ```
+
+```
+
 ```
