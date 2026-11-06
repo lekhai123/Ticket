@@ -1,0 +1,6 @@
+fastapi==0.110.0
+uvicorn==0.29.0
+onnxruntime==1.17.3
+numpy==1.26.4
+redis==5.0.3
+pydantic==2.7.0
