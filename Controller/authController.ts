@@ -1,5 +1,15 @@
 import type { Request, Response } from "express";
 import { AuthService } from "../Service/authService";
+import { RevocationService } from "../Service/revocationService";
+
+// Cấu hình chung cho Cookie chứa Refresh Token
+const REFRESH_COOKIE_OPTS = {
+  httpOnly: true, // Chống XSS
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "lax" as const,
+  maxAge: 7 * 24 * 60 * 60 * 1000, // 7 ngày
+  path: "/api/auth", // Chỉ gửi cookie này đến các route auth
+};
 
 export class AuthController {
   /**
@@ -10,20 +20,15 @@ export class AuthController {
       const result = await AuthService.login(req.body);
       const { refreshToken, accessToken, user } = result;
 
-      // Set Refresh Token vào HttpOnly Cookie
-      res.cookie("refreshToken", refreshToken, {
-        httpOnly: true, // Chống XSS (JS phía Frontend không thể đọc)
-        secure: process.env.NODE_ENV === "production", 
-        sameSite: "lax",
-        maxAge: 7 * 24 * 60 * 60 * 1000, // Hạn 7 ngày
-      });
+      // Set Refresh Token vào Cookie
+      res.cookie("refreshToken", refreshToken, REFRESH_COOKIE_OPTS);
 
       return res.json({
         success: true,
         message: "Đăng nhập thành công!",
         data: {
           user,
-          accessToken, // Access Token ngắn hạn để FE lưu trên RAM
+          accessToken,
         },
       });
     } catch (err: any) {
@@ -39,7 +44,6 @@ export class AuthController {
    */
   static async refreshToken(req: Request, res: Response) {
     try {
-      // Lấy Refresh Token từ HttpOnly Cookie
       const refreshToken = req.cookies?.refreshToken;
 
       if (!refreshToken) {
@@ -49,31 +53,43 @@ export class AuthController {
         });
       }
 
-      // AuthService trả về { accessToken, user }
+      // Service trả về { accessToken, refreshToken, user }
       const result = await AuthService.refreshToken(refreshToken);
+
+      // Ghi đè Refresh Token mới vào Cookie (bắt buộc do cơ chế rotation)
+      res.cookie("refreshToken", result.refreshToken, REFRESH_COOKIE_OPTS);
 
       return res.status(200).json({
         success: true,
-        data: result,
+        data: {
+          accessToken: result.accessToken,
+          user: result.user,
+        },
       });
     } catch (err: any) {
+      // Xóa cookie nếu refresh token không hợp lệ để buộc đăng nhập lại
+      res.clearCookie("refreshToken", { ...REFRESH_COOKIE_OPTS, maxAge: 0 });
+
       return res.status(err.statusCode || 401).json({
         success: false,
         message: err.message || "Phiên làm việc đã hết hạn!",
       });
     }
   }
+
   /**
-   * Đăng xuất: Xóa Refresh Token trong Cookie
+   * Đăng xuất: Thu hồi token trên server và Xóa Cookie
    */
   static async logout(req: Request, res: Response) {
     try {
-      // Clear cookie refreshToken
-      res.clearCookie("refreshToken", {
-        httpOnly: true,
-        sameSite: "lax",
-        secure: process.env.NODE_ENV === "production",
-      });
+      const accessToken = req.headers.authorization?.split(" ")[1];
+      const refreshToken = req.cookies?.refreshToken;
+
+      // Đưa cả Access và Refresh Token vào danh sách đen
+      await RevocationService.revokePair(accessToken, refreshToken);
+
+      // Xóa cookie
+      res.clearCookie("refreshToken", { ...REFRESH_COOKIE_OPTS, maxAge: 0 });
 
       return res.json({
         success: true,

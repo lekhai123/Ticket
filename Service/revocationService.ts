@@ -1,15 +1,77 @@
 import prisma from "../database/prismaClient";
-import NodeCache from "node-cache";
-const myCache = new NodeCache({ stdTTL: 300 });
+import jwt from "jsonwebtoken";
+import { redisPrimary } from "../Utils/redisLock";
+import { MultiLevelCache } from "./cacheService";
+
 export class RevocationService {
+  // ============================================================
+  // JWT REVOCATION (dùng cho logout + refresh rotation)
+  // ============================================================
+
   /**
-   * THU HỒI TỰ ĐỘNG HÀNG LOẠT THEO BATCH ID (Dành cho sự cố tặng vé/tiền nhầm)
+   * Đưa jti vào blacklist Redis với TTL = thời gian còn lại của token.
+   * Token hết hạn tự nhiên thì không cần lưu (TTL <= 0).
+   */
+  static async revoke(jti: string, exp: number): Promise<void> {
+    if (!jti || !exp) return;
+    const ttl = exp - Math.floor(Date.now() / 1000);
+    if (ttl <= 0) return;
+    try {
+      await redisPrimary.set(`revoked:${jti}`, "1", "EX", ttl);
+    } catch (err: any) {
+      console.error("[REVOKE] Không lưu được jti:", err.message);
+    }
+  }
+
+  /**
+   * Kiểm tra jti có nằm trong blacklist không.
+   * Redis lỗi thì fail-open (trả false) để không chặn user oan.
+   */
+  static async isRevoked(jti?: string): Promise<boolean> {
+    if (!jti) return false;
+    try {
+      return (await redisPrimary.get(`revoked:${jti}`)) === "1";
+    } catch (err: any) {
+      console.error("[REVOKE] Không đọc được jti:", err.message);
+      return false;
+    }
+  }
+
+  /**
+   * Thu hồi cả cặp access + refresh khi logout.
+   * Decode lấy jti + exp từng token rồi đưa vào blacklist.
+   */
+  static async revokePair(
+    accessToken?: string,
+    refreshToken?: string,
+  ): Promise<void> {
+    for (const t of [accessToken, refreshToken]) {
+      if (!t) continue;
+      try {
+        const decoded: any = jwt.decode(t);
+        if (decoded?.jti && decoded?.exp) {
+          await this.revoke(decoded.jti, decoded.exp);
+        }
+      } catch {
+        // token hỏng thì bỏ qua
+      }
+    }
+  }
+
+  // ============================================================
+  // THU HỒI HÀNG LOẠT THEO BATCH ID (sự cố tặng vé/tiền nhầm)
+  // ============================================================
+
+  /**
+   * Thu hồi toàn bộ tác động của một batch (tặng tiền, cấp vé...).
+   * Duyệt từng audit log chưa revoke, hoàn tác theo loại action,
+   * ghi log mới để hiển thị lịch sử ví cho user.
    */
   static async revokeBatch(batchId: string, adminUserId: number) {
     const cleanBatchId = batchId.trim();
 
     return await prisma.$transaction(async (tx) => {
-      //Lấy toàn bộ Log chưa bị Revoke thuộc Batch
+      // Lấy toàn bộ log chưa bị revoke thuộc batch
       const logs = await tx.auditLog.findMany({
         where: {
           batchId: { equals: cleanBatchId, mode: "insensitive" },
@@ -32,7 +94,8 @@ export class RevocationService {
             ? JSON.parse(log.newData)
             : log.newData
         ) as any;
-        //CASE 1: THU HỒI TIỀN TẶNG HÀNG LOẠT (MASS GIFT WALLET)
+
+        // Trường hợp 1: thu hồi tiền tặng hàng loạt
         if (log.action === "MASS_GIFT_EXECUTE") {
           const giftedAmount = Number(newDataObj?.amountPerUser || 0);
           const targetUserIds: number[] = newDataObj?.affectedUserIds || [];
@@ -42,19 +105,19 @@ export class RevocationService {
             Array.isArray(targetUserIds) &&
             targetUserIds.length > 0
           ) {
-            // a. Trừ tiền đồng loạt ở bảng Wallets
+            // Trừ tiền đồng loạt ở ví
             await tx.wallets.updateMany({
               where: { userId: { in: targetUserIds } },
               data: { balance: { decrement: giftedAmount } },
             });
 
-            // b.Lấy thông tin ví mới để ghi AuditLog cho TỪNG USER
+            // Lấy ví mới để ghi audit log từng user
             const affectedWallets = await tx.wallets.findMany({
               where: { userId: { in: targetUserIds } },
               select: { id: true, userId: true, balance: true },
             });
 
-            // c.Tạo Log trừ tiền hiển thị trên Lịch sử Ví của User
+            // Ghi log trừ tiền hiện trên lịch sử ví
             const revokeWalletLogs = affectedWallets.map((w) => {
               const currentBalance = Number(w.balance);
               return {
@@ -66,7 +129,7 @@ export class RevocationService {
                 resourceId: String(w.id),
                 oldData: { balance: currentBalance + giftedAmount },
                 newData: {
-                  amount: -giftedAmount, // Số âm (-) để UI Lịch sử Ví hiện màu đỏ/trừ tiền
+                  amount: -giftedAmount,
                   description: `Admin thu hồi quà tặng tiền ví (Đợt: ${cleanBatchId})`,
                   newBalance: currentBalance,
                 },
@@ -82,7 +145,7 @@ export class RevocationService {
           }
         }
 
-        //CASE 2: THU HỒI MUA VÉ / CẤP VÉ LỖI HỆ THỐNG (TICKETS)
+        // Trường hợp 2: thu hồi vé (mua vé / cấp vé lỗi hệ thống)
         else if (
           log.action === "BOOK_TICKET_PAYMENT" ||
           log.action === "BOOK_TICKET_BATCH" ||
@@ -109,25 +172,26 @@ export class RevocationService {
             if (ticketsToRevoke.length > 0) {
               const ticketIds = ticketsToRevoke.map((t) => t.id);
 
-              // a. Chuyển trạng thái vé sang REVOKED_BY_ADMIN
+              // Chuyển vé sang trạng thái đã thu hồi
               await tx.tickets.updateMany({
                 where: { id: { in: ticketIds } },
                 data: { status: "REVOKED_BY_ADMIN" },
               });
 
-              // Xóa cache để sơ đồ ghế lập tức nhả trống các ghế này
+              // Xóa cache sơ đồ ghế + danh sách trip để availableSeats cập nhật
               try {
-                myCache.del(`trips:detail:${tripId}`);
+                await MultiLevelCache.invalidate(`trips:detail:${tripId}`);
+                await MultiLevelCache.invalidate("trips:all:active");
               } catch (cacheErr) {
-                console.warn("⚠️ Xóa Cache thất bại:", cacheErr);
+                console.warn("Xóa cache thất bại:", cacheErr);
               }
 
-              // b. Kiểm tra số tiền THỰC TẾ user đã bỏ ra mua vé trong Log
+              // Số tiền user thực tế đã bỏ ra mua vé
               const actualPaidAmount = Math.abs(
                 Number(newDataObj?.amount || 0),
               );
 
-              // Chỉ hoàn tiền NẾU User thực sự có bỏ tiền mua (actualPaidAmount > 0)
+              // Chỉ hoàn tiền nếu user thực sự có trả tiền
               if (actualPaidAmount > 0) {
                 const updatedWallet = await tx.wallets.update({
                   where: { userId: logUserId },
@@ -137,7 +201,7 @@ export class RevocationService {
 
                 const currentBalance = Number(updatedWallet.balance);
 
-                //Tạo Log hoàn tiền hiển thị trên Lịch sử Ví
+                // Ghi log hoàn tiền hiện trên lịch sử ví
                 await tx.auditLog.create({
                   data: {
                     requestId: `REFUND_${Date.now()}_${logUserId}`,
@@ -164,13 +228,14 @@ export class RevocationService {
           }
         }
 
+        // Đánh dấu log đã revoke
         await tx.auditLog.update({
           where: { id: log.id },
           data: { isRevoked: true },
         });
       }
 
-      // Ghi lại Summary Audit Log cho Admin
+      // Ghi log tổng kết cho admin
       await tx.auditLog.create({
         data: {
           requestId: `REVOKE_SUMMARY_${Date.now()}`,
