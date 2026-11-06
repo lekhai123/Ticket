@@ -1,24 +1,49 @@
-import { v2 as cloudinaryPrimary } from "cloudinary";
-import { v2 as cloudinaryBackup } from "cloudinary";
 import dotenv from "dotenv";
+dotenv.config();
 
-dotenv.config(); 
+// Hàm bắt buộc phải có biến môi trường
+function requiredEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(
+      `[CONFIG ERROR] Thiếu biến môi trường "${name}" cho Cloudinary!`,
+    );
+  }
+  return value;
+}
 
-// 1. Config Cloudinary Primary
-cloudinaryPrimary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME || "",
-  api_key: process.env.CLOUDINARY_API_KEY || "",
-  api_secret: process.env.CLOUDINARY_API_SECRET || "",
+// 1. Cấu hình Primary (Bắt buộc phải có)
+export const cloudinaryPrimaryConfig = {
+  cloud_name: requiredEnv("CLOUDINARY_CLOUD_NAME"),
+  api_key: requiredEnv("CLOUDINARY_API_KEY"),
+  api_secret: requiredEnv("CLOUDINARY_API_SECRET"),
   secure: true,
-});
+};
 
-// 2. Config Cloudinary Backup
-cloudinaryBackup.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME_BACKUP || "",
-  api_key: process.env.CLOUDINARY_API_KEY_BACKUP || "",
-  api_secret: process.env.CLOUDINARY_API_SECRET_BACKUP || "",
-  secure: true,
-});
+// 2. Cấu hình Backup (Nếu có thì dùng, không có thì fallback về Primary)
+export const cloudinaryBackupConfig =
+  process.env.CLOUDINARY_CLOUD_NAME_BACKUP &&
+  process.env.CLOUDINARY_API_KEY_BACKUP &&
+  process.env.CLOUDINARY_API_SECRET_BACKUP
+    ? {
+        cloud_name: process.env.CLOUDINARY_CLOUD_NAME_BACKUP,
+        api_key: process.env.CLOUDINARY_API_KEY_BACKUP,
+        api_secret: process.env.CLOUDINARY_API_SECRET_BACKUP,
+        secure: true,
+      }
+    : cloudinaryPrimaryConfig;
 
-export { cloudinaryPrimary, cloudinaryBackup };
-export default cloudinaryPrimary;
+console.log(
+  "[CLOUDINARY] Đã nạp cấu hình Primary:",
+  cloudinaryPrimaryConfig.cloud_name,
+);
+if (cloudinaryBackupConfig !== cloudinaryPrimaryConfig) {
+  console.log(
+    "[CLOUDINARY] Đã nạp cấu hình Backup:",
+    cloudinaryBackupConfig.cloud_name,
+  );
+} else {
+  console.warn(
+    "[CLOUDINARY] Cảnh báo: Không có cấu hình Backup, dùng chung bucket Primary.",
+  );
+}

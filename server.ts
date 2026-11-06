@@ -1,79 +1,40 @@
-import express from "express";
-import "dotenv/config";
-import cookieParser from "cookie-parser";
-import cors from "cors";
+import app from "./app";
+import { ENV, isVercel } from "./config/env";
 
-import { distributedTracing } from "./Middleware/tracingMiddleware";
-import { globalErrorHandler } from "./Middleware/errorMiddleware";
-import { initReconciliationCron } from "./jobs/reconciliationJob";
+// Hàm khởi động các tác vụ chạy ngầm (Chỉ chạy ở Local/VPS)
+async function startBackgroundJobs() {
+  if (isVercel) {
+    console.log("Môi trường Vercel Serverless: Bỏ qua Worker và Cron Job.");
+    return;
+  }
 
-import otpRoutes from "./Router/otpRoutes";
-import tripRoutes from "./Router/tripRoute";
-import userRoutes from "./Router/userRoutes";
-import walletRoutes from "./Router/walletRoutes";
-import ticketRoutes from "./Router/ticketRoutes";
-import adminRoutes from "./Router/adminRoutes";
-import authRoutes from "./Router/authRoutes";
-import bookingRoutes from "./Router/bookingRoutes";
+  console.log("Môi trường Local/VPS: Đang khởi động Worker và Cron Job...");
 
-const app = express();
-
-const allowedOrigins = [
-  "http://localhost:5173",
-  process.env.FRONTEND_URL || "",
-].filter(Boolean);
-
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      if (
-        !origin ||
-        (origin && origin.endsWith(".vercel.app")) ||
-        allowedOrigins.includes(origin) ||
-        process.env.NODE_ENV !== "production"
-      ) {
-        return callback(null, true);
-      }
-      return callback(new Error("Not allowed by CORS"));
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: [
-      "Content-Type",
-      "Authorization",
-      "idempotency-key",
-      "x-request-id",
-      "X-Request-ID",
-      "x-idempotency-key",
-    ],
-  }),
-);
-
-app.use(express.json());
-app.use(cookieParser());
-
-app.use(distributedTracing);
-
-app.use("/api/otp", otpRoutes);
-app.use("/api/trips", tripRoutes);
-app.use("/api/users", userRoutes);
-app.use("/api/wallets", walletRoutes);
-app.use("/api/tickets", ticketRoutes);
-app.use("/api/admin", adminRoutes);
-app.use("/api/auth", authRoutes);
-app.use("/api/bookings", bookingRoutes);
-
-app.use(globalErrorHandler);
-
-if (process.env.NODE_ENV !== "production" || !process.env.VERCEL) {
+  // Dynamic Import để tránh lỗi treo kết nối Redis trên Vercel
+  const { initReconciliationCron } = await import("./jobs/reconciliationJob");
   initReconciliationCron();
+
+  await import("./queues/mailQueue");
+  console.log("Mail Worker đã khởi động và đang chờ Job.");
 }
 
-if (process.env.NODE_ENV !== "production" || !process.env.VERCEL) {
-  const PORT = process.env.PORT || 3000;
-  app.listen(PORT, () => {
-    console.log(`🚀 Server is running on port ${PORT}`);
-  });
+// Khởi chạy Server
+async function bootstrap() {
+  await startBackgroundJobs();
+
+  if (!isVercel) {
+    const PORT = ENV.PORT;
+    app.listen(PORT, () => {
+      console.log(`Server is running at http://localhost:${PORT}`);
+    });
+  }
 }
 
+// Chạy bootstrap và bắt lỗi nếu có
+bootstrap().catch((error) => {
+  console.error("Lỗi khởi động server:", error);
+  process.exit(1);
+});
+
+// BẮT BUỘC: Export app cho Vercel Serverless Function
 export default app;

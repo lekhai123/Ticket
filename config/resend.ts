@@ -1,6 +1,25 @@
 import { Resend } from "resend";
+import dotenv from "dotenv";
+dotenv.config();
 
-export const resend = new Resend(process.env.RESEND_API_KEY || "re_123456789");
+// Hàm bắt buộc phải có biến môi trường
+function requiredEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(
+      `[CONFIG ERROR] Thiếu biến môi trường "${name}" cho Resend!`,
+    );
+  }
+  return value;
+}
+
+// Bắt buộc phải có API Key
+const resendApiKey = requiredEnv("RESEND_API_KEY");
+export const resend = new Resend(resendApiKey);
+
+// Cho phép tùy chỉnh email gửi đi qua .env, nếu không có dùng mặc định
+const fromEmail =
+  process.env.RESEND_FROM_EMAIL || "BinStudio <security@binstudio.id.vn>";
 
 export const sendOtpEmail = async (
   toEmail: string,
@@ -26,7 +45,7 @@ export const sendOtpEmail = async (
   `;
 
   return await resend.emails.send({
-    from: "BinStudio <security@binstudio.id.vn>",
+    from: fromEmail,
     to: toEmail,
     subject: subject,
     html: html,

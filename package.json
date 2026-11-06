@@ -4,15 +4,11 @@
   "description": "Backend API Server",
   "main": "server.ts",
   "scripts": {
-    "predev": "node scripts/check-docker.js",
     "dev": "tsx watch server.ts",
     "dev:fe": "cd frontend && npm run dev",
-    "setup": "npm install && cd frontend && npm install && cd .. && docker compose up -d && npx prisma generate && npx prisma db push",
-    "docker:up": "docker compose up -d",
-    "docker:down": "docker compose down",
-    "docker:reset": "docker compose down -v && docker compose up -d && npx prisma db push",
+    "setup": "npm install && cd frontend && npm install && cd .. && npx prisma generate && npx prisma migrate deploy",
     "build:be": "tsup server.ts --out-dir dist-api --format esm --no-splitting",
-    "vercel-build": "prisma generate && npm run build:be && cd frontend && npm install && npm run build"
+    "vercel-build": "prisma generate && cd frontend && npm install && npm run build"
   },
   "dependencies": {
     "@google/genai": "^2.12.0",
