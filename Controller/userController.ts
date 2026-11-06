@@ -1,29 +1,35 @@
 import type { Request, Response, NextFunction } from "express";
 import { UserService } from "../Service/userService";
-import { CloudinaryService } from "../Service/cloudinaryService";
+
 export class UserController {
-  // Đăng ký tài khoản (Tự động tạo Ví)
-  static async register(req: Request, res: Response): Promise<void> {
-    const user = await UserService.registerUser(req.body);
-    res.status(201).json({
-      success: true,
-      message: "Tạo tài khoản và khởi tạo ví thành công!",
-      data: user,
-    });
+  static async register(req: Request, res: Response, next: NextFunction) {
+    try {
+      const user = await UserService.registerUser(req.body);
+      res.status(201).json({
+        success: true,
+        message: "Tạo tài khoản và khởi tạo ví thành công!",
+        data: user,
+      });
+    } catch (error) {
+      next(error);
+    }
   }
 
-  // Lấy thông tin User theo ID
-  static async getUserProfile(req: Request, res: Response): Promise<void> {
-    const userId = Number(req.params.id);
-    const user = await UserService.getUserById(userId);
-    res.status(200).json({
-      success: true,
-      data: user,
-    });
-  }
-  static getMe = async (req: Request, res: Response, next: Function) => {
+  static async getUserProfile(req: Request, res: Response, next: NextFunction) {
     try {
-      // Lấy id/userId từ JWT Token
+      const userId = Number(req.params.id);
+      const user = await UserService.getUserById(userId);
+      res.status(200).json({
+        success: true,
+        data: user,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static getMe = async (req: Request, res: Response, next: NextFunction) => {
+    try {
       const user = (req as any).user;
       const userId = user?.id || user?.userId;
 
@@ -45,6 +51,7 @@ export class UserController {
       next(error);
     }
   };
+
   static async updateAvatar(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = (req as any).user?.id || (req as any).user?.userId;
@@ -59,6 +66,7 @@ export class UserController {
         Number(userId),
         req.file.buffer,
       );
+
       return res.status(200).json({
         success: true,
         message: "Cập nhật ảnh đại diện thành công!",

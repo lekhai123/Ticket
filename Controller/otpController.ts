@@ -1,44 +1,36 @@
-import type { Request, Response } from "express";
+import type { Request, Response, NextFunction } from "express";
 import { OtpService } from "../Service/otpService";
 
+const catchAsync =
+  (fn: (req: Request, res: Response, next: NextFunction) => Promise<any>) =>
+  (req: Request, res: Response, next: NextFunction) => {
+    Promise.resolve(fn(req, res, next)).catch(next);
+  };
+
 export class OtpController {
-  static async sendOTP(req: Request, res: Response): Promise<void> {
-    try {
-      const { email } = req.body;
-      if (!email) {
-        res.status(400).json({
-          success: false,
-          message: "Email is required",
-        });
-        return;
-      }
-      const otpData = await OtpService.createOTPLogic(email);
-      res.status(200).json({
-        success: true,
-        message: "OTP sent successfully",
-        data: {
-          email: otpData.email,
-          code: otpData.code,
-          expiredAt: otpData.expiredAt,
-        },
-      });
-    } catch (error: any) {
-      res.status(500).json({
-        success: false,
-        message: "Internal server error",
-        error: error.message,
-      });
-    }
-  }
-  static async verifyOTP(req: Request, res: Response): Promise<void> {
-    const { email, code } = req.body;
+  static sendOTP = catchAsync(async (req: Request, res: Response) => {
+    const { email, type } = req.body;
 
-    // Gọi service xử lý logic so khớp
-    await OtpService.verifyOTPLogic(email, code);
+    // OtpService đã trả về object an toàn (không có code)
+    const otpData = await OtpService.createOTPLogic(email, type || "REGISTER");
 
+    res.status(200).json({
+      success: true,
+      message: "Mã OTP đã được gửi đến email của bạn.",
+      data: {
+        email: otpData.email,
+        expiredAt: otpData.expiredAt,
+        // TUYỆT ĐỐI KHÔNG TRẢ CODE VỀ ĐÂY
+      },
+    });
+  });
+
+  static verifyOTP = catchAsync(async (req: Request, res: Response) => {
+    const { email, code, type } = req.body;
+    await OtpService.verifyOTPLogic(email, code, type || "REGISTER");
     res.status(200).json({
       success: true,
       message: "Xác thực OTP thành công!",
     });
-  }
+  });
 }

@@ -1,7 +1,5 @@
-import { PrismaClient } from "@prisma/client";
-import { AIReconciliationAnalyzer } from "../Service/aiReconciliationAnalyzer.service";
-
-const prisma = new PrismaClient();
+import prisma from "../database/prismaClient"; // Dùng singleton Prisma
+import { AIReconciliationAnalyzer } from "./aiReconciliationAnalyzer.service";
 
 export interface MismatchDetail {
   userId: number;
@@ -14,22 +12,37 @@ export interface MismatchDetail {
 
 export class ReconciliationService {
   static async runDailyReconciliation() {
-    console.log("Bắt đầu tiến trình đối soát & Tự động phục hồi...");
-
+    console.log(
+      "[RECONCILIATION] Bắt đầu tiến trình đối soát & Tự động phục hồi...",
+    );
     const startTime = Date.now();
     const mismatchedAccounts: MismatchDetail[] = [];
 
-    const wallets = await prisma.wallets.findMany({
-      include: {
-        user: { select: { email: true, fullName: true } },
-      },
-    });
+    let totalWalletsChecked = 0;
+    let cursorId: number | undefined = undefined;
+    const BATCH_SIZE = 100; // Xử lý 100 ví mỗi đợt
 
-    for (const wallet of wallets) {
-      // 1. Quét chuỗi vết AuditLog (Loại bỏ log cảnh báo hệ thống)
-      const auditLogs = await prisma.auditLog.findMany({
+    // Vòng lặp phân trang
+    while (true) {
+      // 1. Lấy 1 đợt ví
+      const wallets = await prisma.wallets.findMany({
+        take: BATCH_SIZE,
+        skip: cursorId ? 1 : 0, // Bỏ qua ví đã xử lý ở đợt trước
+        cursor: cursorId ? { id: cursorId } : undefined,
+        orderBy: { id: "asc" },
+        include: { user: { select: { email: true, fullName: true } } },
+      });
+
+      if (wallets.length === 0) break; // Hết ví thì dừng
+      cursorId = wallets[wallets.length - 1].id;
+      totalWalletsChecked += wallets.length;
+
+      const userIds = wallets.map((w) => w.userId);
+
+      // 2. Gom tất cả AuditLog của đợt này vào 1 query duy nhất (Tránh N+1)
+      const allAuditLogs = await prisma.auditLog.findMany({
         where: {
-          userId: wallet.userId,
+          userId: { in: userIds },
           resource: "Wallets",
           action: {
             notIn: [
@@ -42,14 +55,23 @@ export class ReconciliationService {
         orderBy: { createdAt: "asc" },
       });
 
-      // 2. Tính số dư lý thuyết (expectedBalance)
-      let calculatedBalance = 0;
+      // 3. Nhóm log theo userId để dễ tính toán
+      const logsByUser = new Map<number, typeof allAuditLogs>();
+      for (const log of allAuditLogs) {
+        if (!log.userId) continue;
+        if (!logsByUser.has(log.userId)) logsByUser.set(log.userId, []);
+        logsByUser.get(log.userId)!.push(log);
+      }
 
-      for (const log of auditLogs) {
-        const newData = log.newData as Record<string, any> | null;
-        if (!newData) continue;
+      // 4. Xử lý từng ví trong đợt
+      for (const wallet of wallets) {
+        const auditLogs = logsByUser.get(wallet.userId) || [];
+        let calculatedBalance = 0;
 
-        if (typeof newData.amount === "number") {
+        for (const log of auditLogs) {
+          const newData = log.newData as Record<string, any> | null;
+          if (!newData || typeof newData.amount !== "number") continue;
+
           const rawAmount = newData.amount;
           const action = log.action.toUpperCase();
 
@@ -71,98 +93,111 @@ export class ReconciliationService {
             }
           }
         }
-      }
 
-      const actualBalance = Number(wallet.balance);
-      const difference = Number((actualBalance - calculatedBalance).toFixed(2));
+        const actualBalance = Number(wallet.balance);
+        const difference = Number(
+          (actualBalance - calculatedBalance).toFixed(2),
+        );
 
-      // 3. Nếu phát hiện chênh lệch (Difference != 0)
-      if (Math.abs(difference) > 0.001) {
-        const isDebt = calculatedBalance < 0;
+        // 5. Phát hiện chênh lệch
+        if (Math.abs(difference) > 0.001) {
+          const isDebt = calculatedBalance < 0;
 
-        mismatchedAccounts.push({
-          userId: wallet.userId,
-          walletId: wallet.id,
-          expectedBalance: calculatedBalance,
-          actualBalance: actualBalance,
-          difference: difference,
-          status: isDebt ? "DEBT_GENERATED_AND_FROZEN" : "DEBITED_AND_FROZEN",
-        });
-
-        // 4. Xử lý Auto-Remediation & Tự động ghi Nợ/Cân bằng số dư
-        await prisma.$transaction(async (tx) => {
-          // A. Đưa ví về số dư chuẩn (Nếu calculatedBalance < 0 -> Ví thành số âm) & Khóa ví
-          await tx.wallets.update({
-            where: { id: wallet.id },
-            data: {
-              balance: calculatedBalance, // Đưa thẳng về expectedBalance (Dương hoặc Âm)
-              isLocked: true, // Khóa ví
-            },
+          mismatchedAccounts.push({
+            userId: wallet.userId,
+            walletId: wallet.id,
+            expectedBalance: calculatedBalance,
+            actualBalance: actualBalance,
+            difference: difference,
+            status: isDebt ? "DEBT_GENERATED_AND_FROZEN" : "DEBITED_AND_FROZEN",
           });
 
-          // B. Lấy IP gần nhất của User từ AuditLog để chèn vào Blacklist IP
-          const lastLog = auditLogs[auditLogs.length - 1];
-          if (lastLog?.ipAddress && lastLog.ipAddress !== "127.0.0.1") {
-            await tx.blacklistedIPs.upsert({
-              where: { ipAddress: lastLog.ipAddress },
-              update: {
-                isResolved: false,
-                reason: `Chênh lệch tài chính Ví #${wallet.id}`,
-              },
-              create: {
-                ipAddress: lastLog.ipAddress,
-                userId: wallet.userId,
-                reason: `Cảnh báo đối soát: Số dư thực tế ${actualBalance}đ vs Lý thuyết ${calculatedBalance}đ`,
-              },
+          // Bọc transaction trong try-catch để 1 ví lỗi không làm sập cả đợt
+          try {
+            await prisma.$transaction(async (tx) => {
+              await tx.wallets.update({
+                where: { id: wallet.id },
+                data: { balance: calculatedBalance, isLocked: true },
+              });
+
+              const lastLog = auditLogs[auditLogs.length - 1];
+              if (lastLog?.ipAddress && lastLog.ipAddress !== "127.0.0.1") {
+                await tx.blacklistedIPs.upsert({
+                  where: { ipAddress: lastLog.ipAddress },
+                  update: {
+                    isResolved: false,
+                    reason: `Chênh lệch tài chính Ví #${wallet.id}`,
+                  },
+                  create: {
+                    ipAddress: lastLog.ipAddress,
+                    userId: wallet.userId,
+                    reason: `Cảnh báo đối soát: Số dư thực tế ${actualBalance}đ vs Lý thuyết ${calculatedBalance}đ`,
+                  },
+                });
+              }
+
+              await tx.auditLog.create({
+                data: {
+                  requestId: `AIOPS-RECON-${Date.now()}-${wallet.id}`,
+                  userId: wallet.userId,
+                  action: "SYSTEM_AUTO_DEBIT_AND_FREEZE",
+                  resource: "Wallets",
+                  resourceId: wallet.id.toString(),
+                  oldData: { actualBalance, isLocked: wallet.isLocked },
+                  newData: {
+                    adjustedAmount: -difference,
+                    newBalance: calculatedBalance,
+                    isLocked: true,
+                    isDebt: isDebt,
+                    reason: isDebt
+                      ? "Khấu trừ khoản tiền không hợp lệ đã tiêu xài -> Ví ghi nợ âm & Khóa ví"
+                      : "Cân bằng lại số dư chuẩn & Khóa ví chờ Admin duyệt",
+                  },
+                  ipAddress: "127.0.0.1 (CRON_AIOPS)",
+                },
+              });
             });
+          } catch (txError: any) {
+            console.error(
+              `[RECONCILIATION] Lỗi khi xử lý ví ${wallet.id}:`,
+              txError.message,
+            );
           }
-
-          // C. Ghi AuditLog tự động trừ tiền & khóa ví
-          await tx.auditLog.create({
-            data: {
-              requestId: `AIOPS-RECON-${Date.now()}`,
-              userId: wallet.userId,
-              action: "SYSTEM_AUTO_DEBIT_AND_FREEZE",
-              resource: "Wallets",
-              resourceId: wallet.id.toString(),
-              oldData: { actualBalance, isLocked: wallet.isLocked },
-              newData: {
-                adjustedAmount: -difference,
-                newBalance: calculatedBalance,
-                isLocked: true,
-                isDebt: isDebt,
-                reason: isDebt
-                  ? "Khấu trừ khoản tiền không hợp lệ đã tiêu xài -> Ví ghi nợ âm & Khóa ví"
-                  : "Cân bằng lại số dư chuẩn & Khóa ví chờ Admin duyệt",
-              },
-              ipAddress: "127.0.0.1 (CRON_AIOPS)",
-            },
-          });
-        });
+        }
       }
     }
 
     const duration = Date.now() - startTime;
 
-    // 5. Tích hợp AI Proxy phân tích Root Cause
+    // 6. AI Phân tích
     let logsSample: any[] = [];
+    let aiAnalysis = null;
+
     if (mismatchedAccounts.length > 0) {
+      // Giới hạn mẫu log để AI không bị quá tải token
       logsSample = await prisma.auditLog.findMany({
         where: { userId: { in: mismatchedAccounts.map((a) => a.userId) } },
         take: 15,
         orderBy: { createdAt: "desc" },
       });
-    }
 
-    const aiAnalysis = await AIReconciliationAnalyzer.analyzeMismatches(
-      mismatchedAccounts,
-      wallets.length,
-      logsSample,
-    );
+      try {
+        aiAnalysis = await AIReconciliationAnalyzer.analyzeMismatches(
+          mismatchedAccounts,
+          totalWalletsChecked,
+          logsSample,
+        );
+      } catch (aiError: any) {
+        console.error(
+          "[RECONCILIATION] Lỗi khi gọi AI phân tích:",
+          aiError.message,
+        );
+      }
+    }
 
     return {
       success: true,
-      totalWalletsChecked: wallets.length,
+      totalWalletsChecked,
       mismatchCount: mismatchedAccounts.length,
       mismatchedAccounts,
       durationMs: duration,
