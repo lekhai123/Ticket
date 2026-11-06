@@ -1,11 +1,9 @@
-import type { Request, Response } from "express";
 import { Router } from "express";
 import { validate } from "../Middleware/validateMiddleware";
 import { authenticateToken, requireAdmin } from "../Middleware/authMiddleware";
-import { AdminController } from "../Controller/adminController";
+import { AdminController } from "../Controller/adminController"; // Chỉ cần import mỗi class này
 import { RevocationService } from "../Service/revocationService";
 import { ReconciliationService } from "../Service/reconciliationService";
-import { unlockWallet } from "../Controller/adminController";
 import {
   getStatsSchema,
   getUsersSchema,
@@ -16,27 +14,21 @@ import {
 
 const router = Router();
 
+// Mọi request vào /api/admin đều phải đăng nhập và là ADMIN
+router.use(authenticateToken, requireAdmin);
+
 router.get(
   "/dashboard-stats",
   validate(getStatsSchema),
   AdminController.getStats,
 );
-
 router.get("/users", validate(getUsersSchema), AdminController.getUsers);
-
-router.post(
-  "/mass-gift",
-  authenticateToken,
-  validate(massGiftSchema),
-  AdminController.massGift,
-);
-
+router.post("/mass-gift", validate(massGiftSchema), AdminController.massGift);
 router.get(
   "/system-health",
   validate(getHealthSchema),
   AdminController.getHealth,
 );
-
 router.get(
   "/audit-logs",
   validate(getAuditLogsSchema),
@@ -45,7 +37,9 @@ router.get(
 
 router.post("/revoke-batch", async (req, res, next) => {
   try {
-    const { batchId, adminUserId } = req.body;
+    const { batchId } = req.body;
+    const adminUserId = (req as any).user?.id || (req as any).user?.userId;
+
     const result = await RevocationService.revokeBatch(
       batchId,
       Number(adminUserId),
@@ -58,7 +52,7 @@ router.post("/revoke-batch", async (req, res, next) => {
   }
 });
 
-router.post("/reconciliation/trigger", async (req: Request, res: Response) => {
+router.post("/reconciliation/trigger", async (req, res) => {
   try {
     const report = await ReconciliationService.runDailyReconciliation();
     return res.status(200).json({
@@ -75,11 +69,7 @@ router.post("/reconciliation/trigger", async (req: Request, res: Response) => {
   }
 });
 
-router.patch(
-  "/wallets/:userId/unlock",
-  authenticateToken,
-  requireAdmin,
-  unlockWallet,
-);
+// Gọi qua class thay vì import lẻ
+router.patch("/wallets/:userId/unlock", AdminController.unlockWallet);
 
 export default router;

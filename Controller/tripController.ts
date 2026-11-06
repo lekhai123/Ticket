@@ -1,14 +1,16 @@
-// FILE: Controller/tripController.ts
-import type { Request, Response } from "express";
+import type { Request, Response, NextFunction } from "express";
 import { TripService } from "../Service/tripService";
 
-export class TripController {
-  /**
-   * Tạo mới chuyến xe(Tự động sinh Vector)
-   */
-  static async createTrip(req: Request, res: Response): Promise<void> {
-    const { route, description, departureAt, price, totalSeats } = req.body;
+// Hàm wrapper bắt lỗi tự động, không cần viết try/catch dài dòng
+const catchAsync =
+  (fn: (req: Request, res: Response, next: NextFunction) => Promise<any>) =>
+  (req: Request, res: Response, next: NextFunction) => {
+    Promise.resolve(fn(req, res, next)).catch(next);
+  };
 
+export class TripController {
+  static createTrip = catchAsync(async (req: Request, res: Response) => {
+    const { route, description, departureAt, price, totalSeats } = req.body;
     const tripData = await TripService.createTripLogic(
       route,
       description,
@@ -16,94 +18,59 @@ export class TripController {
       price,
       totalSeats,
     );
-
     res.status(201).json({
       success: true,
       message: "Tạo chuyến xe thông minh thành công!",
       data: tripData,
     });
-  }
+  });
 
-  /**
-   * Lấy danh sách toàn bộ chuyến xe thông thường
-   */
-  static async getAllTrips(req: Request, res: Response): Promise<void> {
+  static getAllTrips = catchAsync(async (req: Request, res: Response) => {
     const trips = await TripService.getAllTripsLogic();
+    res.status(200).json({ success: true, data: trips });
+  });
+
+  static searchSemantic = catchAsync(async (req: Request, res: Response) => {
+    const prompt = req.body?.prompt ?? "";
+    const limit = req.body?.limit ? Number(req.body.limit) : 5;
+    const searchResults = await TripService.searchTripsSemanticLogic(
+      prompt,
+      limit,
+    );
     res.status(200).json({
       success: true,
-      data: trips,
+      message: "Tìm kiếm bằng AI thành công!",
+      data: searchResults,
     });
-  }
+  });
 
-  /**
-   * Tìm kiếm chuyến xe thông minh bằng ngôn ngữ tự nhiên
-   */
-  static async searchSemantic(req: Request, res: Response): Promise<void> {
-    try {
-      // 1. Lấy prompt và limit từ req.body (đã qua Zod validate & default fallback)
-      const prompt = req.body?.prompt ?? "";
-      const limit = req.body?.limit ? Number(req.body.limit) : 5;
-
-      // 2. Gọi Service xử lý logic
-      const searchResults = await TripService.searchTripsSemanticLogic(
-        prompt,
-        limit,
-      );
-
-      res.status(200).json({
-        success: true,
-        message: "Tìm kiếm bằng AI thành công!",
-        data: searchResults,
-      });
-    } catch (error: any) {
-      res.status(500).json({
-        success: false,
-        message: error.message || "Lỗi máy chủ khi tìm kiếm AI",
-      });
-    }
-  }
-
-  /**
-   * Lấy chi tiết 1 chuyến xe
-   */
-  static async getTripById(req: Request, res: Response): Promise<void> {
-    // req.params.id đã được z.coerce.number() ép sang kiểu number
+  static getTripById = catchAsync(async (req: Request, res: Response) => {
     const id = Number(req.params.id);
-
     const trip = await TripService.getTripByIdLogic(id);
+    res.status(200).json({ success: true, data: trip });
+  });
 
-    res.status(200).json({
-      success: true,
-      data: trip,
-    });
-  }
-
-  /**
-   * Cập nhật thông tin chuyến xe
-   */
-  static async updateTrip(req: Request, res: Response): Promise<void> {
+  static updateTrip = catchAsync(async (req: Request, res: Response) => {
     const id = Number(req.params.id);
-
     const updatedTrip = await TripService.updateTripLogic(id, req.body);
-
     res.status(200).json({
       success: true,
       message: "Cập nhật chuyến xe thành công!",
       data: updatedTrip,
     });
-  }
+  });
 
-  /**
-   * Xóa chuyến xe
-   */
-  static async deleteTrip(req: Request, res: Response): Promise<void> {
+  static deleteTrip = catchAsync(async (req: Request, res: Response) => {
     const id = Number(req.params.id);
-
     await TripService.deleteTripLogic(id);
-
-    res.status(200).json({
-      success: true,
-      message: "Xóa chuyến xe thành công!",
-    });
-  }
+    res
+      .status(200)
+      .json({ success: true, message: "Xóa chuyến xe thành công!" });
+  });
+  static getAllTripsForAdmin = catchAsync(
+    async (req: Request, res: Response) => {
+      const trips = await TripService.getAllTripsForAdminLogic();
+      res.status(200).json({ success: true, data: trips });
+    },
+  );
 }
