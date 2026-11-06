@@ -32,15 +32,14 @@ export type UserStatus = "ACTIVE" | "BANNED" | "LOCKED";
 export interface User {
   id: number;
   email: string;
-  name: string;
+  fullName: string; // Đổi từ name -> fullName
   avatarUrl?: string;
   role: Role;
-  vipLevel: VipLevel;
-  balance: number;
-  totalSpent: number;
-  status: UserStatus;
   createdAt: string;
-  updatedAt: string;
+  wallet?: {
+    balance: number;
+    isLocked: boolean;
+  };
 }
 
 export interface AuthResponse {
@@ -180,7 +179,10 @@ export interface Ticket {
     | "USED"
     | "CANCELED"
     | "REVOKED_BY_ADMIN";
+  paymentMethod?: string; // Thêm mới
+  paidAmount?: number; // Thêm mới
   createdAt?: string;
+  trip?: Trip; // Quan hệ
 }
 
 export interface BookTicketPayload {

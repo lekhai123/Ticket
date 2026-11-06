@@ -1,15 +1,24 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ticketApi, type BookTicketPayload } from "../api/ticket.api";
+import { bookingApi, type CreateBookingPayload } from "../api/booking.api";
 
 export const useTicket = () => {
   const queryClient = useQueryClient();
 
   const bookMutation = useMutation({
-    mutationFn: (payload: BookTicketPayload) => ticketApi.bookTicket(payload),
+    mutationFn: (payload: CreateBookingPayload) =>
+      bookingApi.createBooking(payload),
     onSuccess: (_, variables) => {
-      // Invalidate cache ví và chuyến xe để cập nhật UI
       queryClient.invalidateQueries({ queryKey: ["wallet"] });
       queryClient.invalidateQueries({ queryKey: ["trip", variables.tripId] });
+      queryClient.invalidateQueries({ queryKey: ["tickets", "my-tickets"] });
+      queryClient.invalidateQueries({ queryKey: ["bookings", "my-tickets"] });
+    },
+  });
+
+  const cancelMutation = useMutation({
+    mutationFn: (ticketId: number) => bookingApi.cancelBooking(ticketId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["wallet"] });
       queryClient.invalidateQueries({ queryKey: ["tickets", "my-tickets"] });
     },
   });
@@ -17,5 +26,7 @@ export const useTicket = () => {
   return {
     bookTicket: bookMutation.mutateAsync,
     isBooking: bookMutation.isPending,
+    cancelTicket: cancelMutation.mutateAsync,
+    isCanceling: cancelMutation.isPending,
   };
 };

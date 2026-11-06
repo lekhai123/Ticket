@@ -62,4 +62,8 @@ export const tripApi = {
   async delete(id: number | string): Promise<void> {
     await axiosClient.delete(`/trips/${id}`);
   },
+  async getAllForAdmin(): Promise<Trip[]> {
+    const res = await axiosClient.get<ApiResponse<Trip[]>>("/trips/admin/all");
+    return res.data.data;
+  },
 };

@@ -37,13 +37,11 @@ axiosClient.interceptors.request.use((config) => {
   return config;
 });
 
-// Response Interceptor: Tự động Refresh Token khi 401
 axiosClient.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
 
-    // Kiểm tra nếu lỗi 401 và chưa từng thử retry
     if (
       error.response?.status === 401 &&
       originalRequest &&
@@ -54,9 +52,7 @@ axiosClient.interceptors.response.use(
       originalRequest._retry = true;
 
       try {
-        // Dùng refreshAxios độc lập để lấy Token mới
         const refreshRes = await refreshAxios.post("/auth/refresh-token");
-
         const accessToken =
           refreshRes.data?.data?.accessToken || refreshRes.data?.accessToken;
 
@@ -66,7 +62,6 @@ axiosClient.interceptors.response.use(
           return axiosClient(originalRequest);
         }
       } catch (refreshErr) {
-        // Refresh token hết hạn hoặc không hợp lệ -> Logout
         useAuthStore.getState().logout();
         if (window.location.pathname !== "/auth/login") {
           window.location.href = "/auth/login";
@@ -75,7 +70,16 @@ axiosClient.interceptors.response.use(
       }
     }
 
-    return Promise.reject(error.response?.data ?? error);
+    // Giữ lại HTTP Status Code để FE dễ bắt lỗi (VD: 403, 404)
+    const errorData = error.response?.data || {};
+    const errorMessage =
+      errorData.message || error.message || "Đã có lỗi xảy ra";
+
+    return Promise.reject({
+      ...errorData,
+      status: error.response?.status,
+      message: errorMessage,
+    });
   },
 );
 

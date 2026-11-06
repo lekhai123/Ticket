@@ -14,9 +14,10 @@ export default function TripManagement() {
   const [totalSeats, setTotalSeats] = useState(30);
   const [description, setDescription] = useState("");
 
-  const { data: trips = [], isLoading } = useQuery({
+  // Lấy danh sách toàn bộ chuyến xe dành cho Admin
+  const { data: trips = [], isLoading } = useQuery<Trip[], Error>({
     queryKey: ["admin-trips"],
-    queryFn: tripApi.getAll,
+    queryFn: tripApi.getAllForAdmin,
   });
 
   const openCreateModal = () => {
@@ -56,11 +57,13 @@ export default function TripManagement() {
       }
     },
     onSuccess: () => {
+      // Load lại cả danh sách của Admin và danh sách của Khách
       queryClient.invalidateQueries({ queryKey: ["admin-trips"] });
+      queryClient.invalidateQueries({ queryKey: ["trips", "default"] });
       setIsModalOpen(false);
     },
     onError: (err: any) => {
-      alert(err.response?.data?.message || "Có lỗi xảy ra khi lưu!");
+      alert(err.message || "Có lỗi xảy ra khi lưu!");
     },
   });
 
@@ -68,9 +71,11 @@ export default function TripManagement() {
     mutationFn: tripApi.delete,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-trips"] });
+      queryClient.invalidateQueries({ queryKey: ["trips", "default"] });
     },
     onError: (err: any) => {
-      alert(err.response?.data?.message || "Không thể xoá chuyến xe này!");
+      // Hiển thị lỗi chặn xóa nếu chuyến đã có vé thanh toán
+      alert(err.message || "Không thể xoá chuyến xe này!");
     },
   });
 
@@ -79,7 +84,9 @@ export default function TripManagement() {
       <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-2xl font-bold">Quản lý Chuyến xe</h1>
-          <p className="text-sm text-zinc-400">Thêm, sửa, xoá và theo dõi số chỗ thực tế theo thời gian thực</p>
+          <p className="text-sm text-zinc-400">
+            Thêm, sửa, xoá và theo dõi số chỗ thực tế theo thời gian thực
+          </p>
         </div>
         <button
           onClick={openCreateModal}
@@ -104,16 +111,22 @@ export default function TripManagement() {
           <tbody className="divide-y divide-zinc-800">
             {isLoading ? (
               <tr>
-                <td colSpan={6} className="p-8 text-center text-zinc-500">Đang tải dữ liệu...</td>
+                <td colSpan={6} className="p-8 text-center text-zinc-500">
+                  Đang tải dữ liệu...
+                </td>
               </tr>
             ) : trips.length === 0 ? (
               <tr>
-                <td colSpan={6} className="p-8 text-center text-zinc-500">Chưa có chuyến xe nào</td>
+                <td colSpan={6} className="p-8 text-center text-zinc-500">
+                  Chưa có chuyến xe nào
+                </td>
               </tr>
             ) : (
               trips.map((trip) => (
                 <tr key={trip.id} className="hover:bg-zinc-800/30 transition">
-                  <td className="p-4 font-mono text-xs text-zinc-500">#{trip.id}</td>
+                  <td className="p-4 font-mono text-xs text-zinc-500">
+                    #{trip.id}
+                  </td>
                   <td className="p-4 font-medium text-white">{trip.route}</td>
                   <td className="p-4 text-zinc-300">
                     {new Date(trip.departureAt).toLocaleString("vi-VN")}
@@ -122,11 +135,13 @@ export default function TripManagement() {
                     {trip.price.toLocaleString("vi-VN")} đ
                   </td>
                   <td className="p-4 text-center">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
-                      trip.availableSeats === 0
-                        ? "bg-rose-500/10 text-rose-400 border border-rose-500/20"
-                        : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                    }`}>
+                    <span
+                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                        trip.availableSeats === 0
+                          ? "bg-rose-500/10 text-rose-400 border border-rose-500/20"
+                          : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                      }`}
+                    >
                       {trip.availableSeats} / {trip.totalSeats} chỗ
                     </span>
                   </td>
@@ -139,7 +154,9 @@ export default function TripManagement() {
                     </button>
                     <button
                       onClick={() => {
-                        if (confirm(`Bạn có chắc muốn xóa chuyến #${trip.id}?`)) {
+                        if (
+                          confirm(`Bạn có chắc muốn xóa chuyến #${trip.id}?`)
+                        ) {
                           deleteMutation.mutate(trip.id);
                         }
                       }}
@@ -160,7 +177,9 @@ export default function TripManagement() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-xl">
             <h2 className="text-lg font-bold mb-4">
-              {editingTrip ? `Chỉnh sửa chuyến #${editingTrip.id}` : "Thêm chuyến xe mới"}
+              {editingTrip
+                ? `Chỉnh sửa chuyến #${editingTrip.id}`
+                : "Thêm chuyến xe mới"}
             </h2>
             <form
               onSubmit={(e) => {
@@ -170,7 +189,9 @@ export default function TripManagement() {
               className="space-y-4 text-sm"
             >
               <div>
-                <label className="block text-zinc-400 mb-1">Tuyến xe (VD: Sài Gòn - Đà Lạt)</label>
+                <label className="block text-zinc-400 mb-1">
+                  Tuyến xe (VD: Sài Gòn - Đà Lạt)
+                </label>
                 <input
                   required
                   value={route}
@@ -180,7 +201,9 @@ export default function TripManagement() {
               </div>
 
               <div>
-                <label className="block text-zinc-400 mb-1">Thời gian khởi hành</label>
+                <label className="block text-zinc-400 mb-1">
+                  Thời gian khởi hành
+                </label>
                 <input
                   type="datetime-local"
                   required
@@ -192,7 +215,9 @@ export default function TripManagement() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-zinc-400 mb-1">Giá vé (VNĐ)</label>
+                  <label className="block text-zinc-400 mb-1">
+                    Giá vé (VNĐ)
+                  </label>
                   <input
                     type="number"
                     min={0}
@@ -204,7 +229,9 @@ export default function TripManagement() {
                   />
                 </div>
                 <div>
-                  <label className="block text-zinc-400 mb-1">Tổng số ghế</label>
+                  <label className="block text-zinc-400 mb-1">
+                    Tổng số ghế
+                  </label>
                   <input
                     type="number"
                     min={1}
@@ -218,7 +245,9 @@ export default function TripManagement() {
               </div>
 
               <div>
-                <label className="block text-zinc-400 mb-1">Mô tả / Tiện ích (Hỗ trợ AI Search)</label>
+                <label className="block text-zinc-400 mb-1">
+                  Mô tả / Tiện ích (Hỗ trợ AI Search)
+                </label>
                 <textarea
                   rows={3}
                   value={description}
