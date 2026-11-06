@@ -25,6 +25,12 @@ export class WalletService {
       ipAddress?: string | undefined;
     },
   ) {
+    if (amount <= 0) {
+      const error: any = new Error("Số tiền nạp phải lớn hơn 0!");
+      error.statusCode = 400;
+      throw error;
+    }
+
     return await prisma.$transaction(async (tx) => {
       const wallet = await tx.wallets.findUnique({
         where: { userId },
@@ -33,6 +39,15 @@ export class WalletService {
       if (!wallet) {
         const error: any = new Error("Không tìm thấy ví của người dùng này!");
         error.statusCode = 404;
+        throw error;
+      }
+
+      // BẢO MẬT: Chặn nạp tiền nếu ví đang bị khóa (phong tỏa)
+      if (wallet.isLocked) {
+        const error: any = new Error(
+          "Ví này đang bị khóa do vi phạm hoặc chờ đối soát. Không thể nạp tiền!",
+        );
+        error.statusCode = 403;
         throw error;
       }
 

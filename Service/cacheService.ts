@@ -2,15 +2,23 @@ import { LRUCache } from "lru-cache";
 import { redisPrimary, redisBackup } from "../Utils/redisLock";
 import type Redis from "ioredis";
 
-// Layer 1: RAM Cache local
+// L1: cache RAM local, tối đa 500 key, TTL 10s
 const localCache = new LRUCache<string, any>({
   max: 500,
   ttl: 1000 * 10,
 });
 
+// Chuyển pattern kiểu Redis (`trip:*`) sang regex để lọc L1
+function patternToRegex(pattern: string): RegExp {
+  const escaped = pattern
+    .replace(/[.+?^${}()|[\]\\]/g, "\\$&")
+    .replace(/\*/g, ".*");
+  return new RegExp(`^${escaped}$`);
+}
+
 export class MultiLevelCache {
   /**
-   * Helper lấy Redis Instance đang hoạt động (Primary -> Backup)
+   * Lấy Redis đang sống (Primary → Backup).
    */
   private static getActiveRedis(): Redis | null {
     if (redisPrimary.status === "ready" || redisPrimary.status === "connect") {
@@ -20,81 +28,126 @@ export class MultiLevelCache {
       redisBackup &&
       (redisBackup.status === "ready" || redisBackup.status === "connect")
     ) {
-      console.warn("[CACHE FAILOVER] Đang sử dụng Redis Backup cho L2 Cache!");
+      console.warn("[CACHE FAILOVER] Đang dùng Redis Backup cho L2!");
       return redisBackup;
     }
     return null;
   }
 
   /**
-   * Đọc dữ liệu: L1 (RAM) -> L2 (Redis Primary/Backup) -> DB Fallback
+   * Đọc dữ liệu: L1 (RAM) → L2 (Redis) → null (để caller tự query DB).
+   * Có log thời gian từng tầng để đo hiệu quả cache.
    */
   static async get<T>(key: string): Promise<T | null> {
-    // 1. Check L1 (RAM Local)
+    const t0 = process.hrtime.bigint();
+
+    // 1. L1 (RAM)
     if (localCache.has(key)) {
+      const ms = Number(process.hrtime.bigint() - t0) / 1e6;
+      console.log(`[CACHE L1] ${key} = ${ms.toFixed(2)}ms`);
       return localCache.get(key) as T;
     }
 
-    // 2. Check L2 (Redis)
+    // 2. L2 (Redis)
     const activeRedis = this.getActiveRedis();
     if (activeRedis) {
       try {
         const redisData = await activeRedis.get(key);
         if (redisData) {
           const parsed = JSON.parse(redisData);
-          localCache.set(key, parsed); // Sync ngược lại L1 RAM
+          localCache.set(key, parsed); // đồng bộ ngược lại L1
+          const ms = Number(process.hrtime.bigint() - t0) / 1e6;
+          console.log(`[CACHE L2] ${key} = ${ms.toFixed(2)}ms`);
           return parsed;
         }
       } catch (error: any) {
-        console.warn(`[CACHE WARNING] Lỗi đọc Redis Cache: ${error.message}`);
+        console.warn(`[CACHE WARNING] Lỗi đọc Redis: ${error.message}`);
       }
     }
 
+    const ms = Number(process.hrtime.bigint() - t0) / 1e6;
+    console.log(`[CACHE MISS] ${key} = ${ms.toFixed(2)}ms`);
     return null;
   }
 
   /**
-   * Ghi dữ liệu đồng thời L1 (RAM) và L2 (Redis)
+   * Ghi dữ liệu đồng thời vào L1 (RAM) và L2 (Redis).
    */
   static async set(
     key: string,
     value: any,
     ttlSeconds: number = 300,
   ): Promise<void> {
-    // Luôn ghi vào RAM L1
-    localCache.set(key, value);
+    localCache.set(key, value, { ttl: ttlSeconds * 1000 });
 
-    // Ghi vào Redis L2 (Primary hoặc Backup)
     const activeRedis = this.getActiveRedis();
     if (activeRedis) {
       try {
         await activeRedis.setex(key, ttlSeconds, JSON.stringify(value));
       } catch (error: any) {
-        console.warn(`[CACHE WARNING] Lỗi ghi Redis Cache: ${error.message}`);
+        console.warn(`[CACHE WARNING] Lỗi ghi Redis: ${error.message}`);
       }
     }
   }
 
   /**
-   *  Xóa/Làm mới Cache
+   * Xóa 1 key cụ thể ở cả L1 và L2.
    */
-  static async invalidate(keyPattern: string): Promise<void> {
-    // Xóa sạch RAM Cache L1
-    localCache.clear();
-
-    // Xóa Key trên Redis L2
+  static async delete(key: string): Promise<void> {
+    localCache.delete(key);
     const activeRedis = this.getActiveRedis();
     if (activeRedis) {
       try {
-        const keys = await activeRedis.keys(keyPattern);
+        await activeRedis.del(key);
+      } catch (error: any) {
+        console.warn(`[CACHE WARNING] Lỗi xóa Redis: ${error.message}`);
+      }
+    }
+  }
+
+  /**
+   * Xóa cache theo pattern (VD: "trip:123*").
+   * Dùng SCAN thay KEYS để không block Redis.
+   * Chỉ xóa các key L1 khớp pattern, không xóa toàn bộ.
+   */
+  static async invalidate(keyPattern: string): Promise<void> {
+    // 1. Xóa L1 theo pattern (không clear tất cả)
+    const regex = patternToRegex(keyPattern);
+    for (const key of localCache.keys()) {
+      if (regex.test(key)) localCache.delete(key);
+    }
+
+    // 2. Xóa L2 bằng SCAN (an toàn với Redis lớn)
+    const activeRedis = this.getActiveRedis();
+    if (!activeRedis) return;
+
+    try {
+      let cursor = "0";
+      let deletedCount = 0;
+      do {
+        const [nextCursor, keys] = await activeRedis.scan(
+          cursor,
+          "MATCH",
+          keyPattern,
+          "COUNT",
+          100,
+        );
+        cursor = nextCursor;
         if (keys.length > 0) {
           await activeRedis.del(...keys);
+          deletedCount += keys.length;
         }
-      } catch (error: any) {
-        console.warn(
-          ` [CACHE WARNING] Lỗi invalidate Redis Cache: ${error.message}`,
+      } while (cursor !== "0");
+
+      if (deletedCount > 0) {
+        console.log(
+          `[CACHE INVALIDATE] ${keyPattern} → xóa ${deletedCount} key L2`,
         );
       }
+    } catch (error: any) {
+      console.warn(
+        `[CACHE WARNING] Lỗi invalidate "${keyPattern}": ${error.message}`,
+      );
     }
   }
 }

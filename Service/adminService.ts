@@ -1,30 +1,33 @@
 import type { Request, Response, NextFunction } from "express";
 import prisma from "../database/prismaClient";
 import { redisPrimary, redisBackup } from "../Utils/redisLock";
-import { cloudinaryPrimary, cloudinaryBackup } from "../config/cloudinary";
+// SỬA 1: Import thư viện gốc và 2 config thay vì 2 instance
+import { v2 as cloudinary } from "cloudinary";
+import {
+  cloudinaryPrimaryConfig,
+  cloudinaryBackupConfig,
+} from "../config/cloudinary";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { MultiLevelCache } from "./cacheService";
 export class AdminService {
   /**
    * Lấy số liệu thống kê tổng quan hệ thống cho Admin Dashboard
    */
   static async getSystemStats() {
-    // 1. Đếm tổng số lượng người dùng (Role CUSTOMER)
     const totalUsers = await prisma.users.count({
       where: { role: "CUSTOMER" },
     });
 
-    // 2. Đếm tổng số chuyến xe
     const totalTrips = await prisma.trips.count();
 
-    // 3. Đếm tổng số vé đã được xác nhận (CONFIRMED)
     const totalTicketsSold = await prisma.tickets.count({
       where: { status: "CONFIRMED" },
     });
 
-    // 4. Lấy danh sách vé CONFIRMED kèm giá từ Trips để tính tổng doanh thu
     const confirmedTickets = await prisma.tickets.findMany({
       where: { status: "CONFIRMED" },
       select: {
+        createdAt: true,
         trip: {
           select: { price: true, route: true },
         },
@@ -35,33 +38,60 @@ export class AdminService {
       return sum + Number(ticket.trip?.price || 0);
     }, 0);
 
-    // 5. Tính tổng số tiền trong ví của toàn bộ người dùng
     const walletBalanceSum = await prisma.wallets.aggregate({
       _sum: { balance: true },
     });
 
-    //  6. TÍNH TOP TUYẾN ĐƯỜNG (Thống kê số lượng vé theo tuyến)
     const routeMap: Record<string, number> = {};
     confirmedTickets.forEach((ticket) => {
       const routeName = ticket.trip?.route || "Không xác định";
       routeMap[routeName] = (routeMap[routeName] || 0) + 1;
     });
 
-    const topRoutes = Object.entries(routeMap).map(([name, tickets]) => ({
-      name,
-      tickets,
-    }));
+    const topRoutes = Object.entries(routeMap)
+      .map(([name, tickets]) => ({ name, tickets }))
+      .sort((a, b) => b.tickets - a.tickets)
+      .slice(0, 5); // Chỉ lấy top 5 tuyến đường đông khách nhất
 
-    // 7. TẠO DỮ LIỆU MẪU CHO BIỂU ĐỒ DOANH THU 7 NGÀY (Hoặc query theo ngày tạo vé)
-    const revenueChart = [
-      { date: "T2", amount: totalRevenue * 0.1 },
-      { date: "T3", amount: totalRevenue * 0.15 },
-      { date: "T4", amount: totalRevenue * 0.2 },
-      { date: "T5", amount: totalRevenue * 0.1 },
-      { date: "T6", amount: totalRevenue * 0.25 },
-      { date: "T7", amount: totalRevenue * 0.15 },
-      { date: "CN", amount: totalRevenue * 0.05 },
-    ];
+    // Lấy dữ liệu biểu đồ doanh thu 7 ngày gần nhất (Dữ liệu thực tế)
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+    const revenueChartMap = new Map<string, number>();
+    // Khởi tạo 7 ngày với doanh thu 0
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const dateStr = d.toLocaleDateString("vi-VN", {
+        day: "2-digit",
+        month: "2-digit",
+      });
+      revenueChartMap.set(dateStr, 0);
+    }
+
+    // Cộng dồn doanh thu thực tế theo ngày
+    confirmedTickets.forEach((ticket) => {
+      if (ticket.createdAt >= sevenDaysAgo) {
+        const dateStr = new Date(ticket.createdAt).toLocaleDateString("vi-VN", {
+          day: "2-digit",
+          month: "2-digit",
+        });
+        if (revenueChartMap.has(dateStr)) {
+          const current = revenueChartMap.get(dateStr) || 0;
+          revenueChartMap.set(
+            dateStr,
+            current + Number(ticket.trip?.price || 0),
+          );
+        }
+      }
+    });
+
+    const revenueChart = Array.from(revenueChartMap.entries()).map(
+      ([date, amount]) => ({
+        date,
+        amount,
+      }),
+    );
 
     return {
       totalRevenue,
@@ -73,6 +103,7 @@ export class AdminService {
       revenueChart,
     };
   }
+
   static async getAllUsers(params: {
     page?: number;
     limit?: number;
@@ -139,7 +170,6 @@ export class AdminService {
     targetId?: string;
     reason: string;
   }) {
-    // 1. Xác định danh sách target Users (Không ép type number thủ công cho balance để Prisma tự infer)
     let targetUsers: {
       id: number;
       wallet: { id: number; balance: any } | null;
@@ -158,7 +188,6 @@ export class AdminService {
       });
     }
 
-    // Lọc các User có Ví hợp lệ
     const validUsers = targetUsers.filter((u) => u.wallet !== null);
     const targetUserIds = validUsers.map((u) => u.id);
 
@@ -170,14 +199,11 @@ export class AdminService {
       throw error;
     }
 
-    // 2. Định danh Batch ID và Request ID
     const finalBatchId = data.batchId?.trim() || `MASS_GIFT_${Date.now()}`;
     const requestId = `REQ_${Date.now()}`;
     const totalSpent = data.amount * targetUserIds.length;
 
-    // 3. Thực thi Transaction
     return await prisma.$transaction(async (tx) => {
-      // Bulk Update số dư
       await tx.wallets.updateMany({
         where: { userId: { in: targetUserIds } },
         data: {
@@ -186,8 +212,9 @@ export class AdminService {
           },
         },
       });
+
       const userAuditLogs = validUsers.map((u) => {
-        const oldBalance = Number(u.wallet!.balance); // 🎯 Convert Decimal -> number ở đây!
+        const oldBalance = Number(u.wallet!.balance);
         const newBalance = oldBalance + data.amount;
 
         return {
@@ -210,12 +237,15 @@ export class AdminService {
         };
       });
 
-      // Bulk Insert AuditLogs
-      await tx.auditLog.createMany({
-        data: userAuditLogs,
-      });
+      // Chia nhỏ mảng để tránh vượt quá giới hạn tham số của PostgreSQL (65,535 params)
+      const CHUNK_SIZE = 1000;
+      for (let i = 0; i < userAuditLogs.length; i += CHUNK_SIZE) {
+        const chunk = userAuditLogs.slice(i, i + CHUNK_SIZE);
+        await tx.auditLog.createMany({
+          data: chunk,
+        });
+      }
 
-      // AuditLog tổng hợp cho Admin
       await tx.auditLog.create({
         data: {
           requestId,
@@ -244,6 +274,7 @@ export class AdminService {
       };
     });
   }
+
   static async getAuditLogs(params: {
     page?: number;
     limit?: number;
@@ -267,8 +298,6 @@ export class AdminService {
       whereCondition.userId = params.userId;
     }
 
-    // Nếu Admin đang xem trang AuditLog tổng quan (Không filter theo userId hay action cụ thể)
-    // Lọc bỏ bớt các log cá nhân nhỏ lẻ để màn hình Admin sạch 
     if (!params.userId && !params.action) {
       whereCondition.action = {
         notIn: ["MASS_GIFT_RECEIVED", "MASS_GIFT_REVOKED"],
@@ -299,7 +328,7 @@ export class AdminService {
   static async getHealthStatus() {
     const startTime = Date.now();
 
-    // 1. Check PostgreSQL Database
+    // 1. Check PostgreSQL
     let dbLatency = "N/A";
     let dbStatus = "HEALTHY";
     try {
@@ -310,7 +339,7 @@ export class AdminService {
       dbStatus = "DOWN";
     }
 
-    // 2. Check Redis Primary & Redis Backup
+    // 2. Check Redis
     let redisPrimaryLatency = "N/A";
     let redisPrimaryStatus = "HEALTHY";
     try {
@@ -335,12 +364,13 @@ export class AdminService {
       redisBackupStatus = "UNCONFIGURED";
     }
 
-    // 3. Check Cloudinary Primary & Cloudinary Backup
+    // 3. Check Cloudinary
     let cloudPrimaryStatus = "HEALTHY";
     let cloudPrimaryLatency = "N/A";
     try {
       const start = Date.now();
-      await cloudinaryPrimary.api.ping();
+      // SỬA 2: Dùng thư viện gốc và truyền config vào
+      await cloudinary.api.ping(cloudinaryPrimaryConfig);
       cloudPrimaryLatency = `${Date.now() - start}ms`;
     } catch (error) {
       cloudPrimaryStatus = "DOWN";
@@ -350,47 +380,52 @@ export class AdminService {
     let cloudBackupLatency = "N/A";
     try {
       const start = Date.now();
-      await cloudinaryBackup.api.ping();
+      // SỬA 3: Dùng thư viện gốc và truyền config vào
+      await cloudinary.api.ping(cloudinaryBackupConfig);
       cloudBackupLatency = `${Date.now() - start}ms`;
     } catch (error) {
       cloudBackupStatus = "DOWN";
     }
 
-    // 4. Check Gemini AI Multi-Key API
-    let geminiPrimaryStatus = "HEALTHY";
-    let geminiPrimaryLatency = "N/A";
-    const primaryKey = process.env.GEMINI_API_KEY;
+    let geminiHealth = await MultiLevelCache.get<any>("admin:gemini_health");
 
-    if (primaryKey) {
-      try {
-        const start = Date.now();
-        const genAI = new GoogleGenerativeAI(primaryKey);
-        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-        await model.countTokens("ping"); // Request đếm token siêu nhẹ để test ping
-        geminiPrimaryLatency = `${Date.now() - start}ms`;
-      } catch (error) {
-        geminiPrimaryStatus = "DOWN";
+    if (!geminiHealth) {
+      geminiHealth = {
+        primary: { status: "HEALTHY", latency: "N/A" },
+        backup: { status: "HEALTHY", latency: "N/A" },
+      };
+
+      const primaryKey = process.env.GEMINI_API_KEY;
+      if (primaryKey) {
+        try {
+          const start = Date.now();
+          const genAI = new GoogleGenerativeAI(primaryKey);
+          const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+          await model.countTokens("ping");
+          geminiHealth.primary.latency = `${Date.now() - start}ms`;
+        } catch (error) {
+          geminiHealth.primary.status = "DOWN";
+        }
+      } else {
+        geminiHealth.primary.status = "UNCONFIGURED";
       }
-    } else {
-      geminiPrimaryStatus = "UNCONFIGURED";
-    }
 
-    let geminiBackupStatus = "HEALTHY";
-    let geminiBackupLatency = "N/A";
-    const backupKey = process.env.GEMINI_SECONDARY_KEY;
-
-    if (backupKey) {
-      try {
-        const start = Date.now();
-        const genAI = new GoogleGenerativeAI(backupKey);
-        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-        await model.countTokens("ping");
-        geminiBackupLatency = `${Date.now() - start}ms`;
-      } catch (error) {
-        geminiBackupStatus = "DOWN";
+      const backupKey = process.env.GEMINI_SECONDARY_KEY;
+      if (backupKey) {
+        try {
+          const start = Date.now();
+          const genAI = new GoogleGenerativeAI(backupKey);
+          const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+          await model.countTokens("ping");
+          geminiHealth.backup.latency = `${Date.now() - start}ms`;
+        } catch (error) {
+          geminiHealth.backup.status = "DOWN";
+        }
+      } else {
+        geminiHealth.backup.status = "UNCONFIGURED";
       }
-    } else {
-      geminiBackupStatus = "UNCONFIGURED";
+
+      await MultiLevelCache.set("admin:gemini_health", geminiHealth, 300);
     }
 
     return {
@@ -435,16 +470,18 @@ export class AdminService {
       },
       gemini: {
         primaryKey: {
-          status: geminiPrimaryStatus,
-          latencyMs: geminiPrimaryLatency,
+          status: geminiHealth.primary.status,
+          latencyMs: geminiHealth.primary.latency,
         },
         backupKey: {
-          status: geminiBackupStatus,
-          latencyMs: geminiBackupLatency,
+          status: geminiHealth.backup.status,
+          latencyMs: geminiHealth.backup.latency,
         },
         model: "gemini-2.5-flash",
         activeKey:
-          geminiPrimaryStatus === "HEALTHY" ? "PRIMARY_KEY" : "BACKUP_KEY",
+          geminiHealth.primary.status === "HEALTHY"
+            ? "PRIMARY_KEY"
+            : "BACKUP_KEY",
       },
       memory: {
         rss: `${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`,

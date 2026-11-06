@@ -8,8 +8,10 @@ export class UserService {
     password: string;
     fullName: string;
   }) {
+    const cleanEmail = data.email.toLowerCase().trim();
+
     const existingUser = await prisma.users.findUnique({
-      where: { email: data.email },
+      where: { email: cleanEmail },
     });
 
     if (existingUser) {
@@ -23,9 +25,10 @@ export class UserService {
     return await prisma.$transaction(async (tx) => {
       const newUser = await tx.users.create({
         data: {
-          email: data.email,
+          email: cleanEmail,
           password: hashedPassword,
           fullName: data.fullName,
+          role: "CUSTOMER", // Đảm bảo role mặc định
           wallet: {
             create: {
               balance: 0.0,
@@ -43,16 +46,16 @@ export class UserService {
     });
   }
 
+  // Hàm lấy profile của bất kỳ ai (Công khai)
   static async getUserById(userId: number) {
     const user = await prisma.users.findUnique({
       where: { id: userId },
       select: {
         id: true,
-        email: true,
         fullName: true,
-        role: true,
+        avatarUrl: true,
         createdAt: true,
-        wallet: true,
+        // BẢO MẬT: Tuyệt đối không trả về email, role, hay wallet ở đây
       },
     });
 
@@ -64,6 +67,8 @@ export class UserService {
 
     return user;
   }
+
+  // Hàm lấy profile của chính mình (Cần token)
   static async getProfile(userId: number) {
     const user = await prisma.users.findUnique({
       where: { id: userId },
@@ -72,10 +77,12 @@ export class UserService {
         email: true,
         fullName: true,
         role: true,
+        avatarUrl: true, // Thêm avatarUrl để FE hiển thị
         createdAt: true,
         wallet: {
           select: {
             balance: true,
+            isLocked: true,
           },
         },
       },
@@ -89,25 +96,9 @@ export class UserService {
 
     return user;
   }
+
   static async updateAvatar(userId: number, fileBuffer: Buffer) {
-    const avatarUrl = await CloudinaryService.uploadAvatarStream(
-      fileBuffer,
-      userId,
-    );
-
-    const updatedUser = await prisma.users.update({
-      where: { id: userId },
-      data: { avatarUrl },
-      select: {
-        id: true,
-        email: true,
-        fullName: true,
-        role: true,
-        avatarUrl: true,
-        createdAt: true,
-      },
-    });
-
-    return updatedUser;
+    // Chuyển sang dùng hàm của CloudinaryService để tự động dọn ảnh cũ
+    return await CloudinaryService.updateAvatar(userId, fileBuffer);
   }
 }
