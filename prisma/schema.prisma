@@ -14,8 +14,8 @@ model Users {
   fullName  String
   role      Role      @default(CUSTOMER)
   createdAt DateTime  @default(now())
-avatarUrl String?  @db.Text  
-tickets   Tickets[]
+  avatarUrl String?   @db.Text
+  tickets   Tickets[]
   wallet    Wallets?
 }
 
@@ -43,17 +43,22 @@ model Trips {
 }
 
 model Tickets {
-  id         Int          @id @default(autoincrement())
-  userId     Int
-  tripId     Int
-  seatNumber Int
-  status     TicketStatus @default(PENDING)
-  createdAt  DateTime     @default(now())
-  trip       Trips        @relation(fields: [tripId], references: [id])
-  user       Users        @relation(fields: [userId], references: [id])
+  id            Int          @id @default(autoincrement())
+  userId        Int
+  tripId        Int
+  seatNumber    Int
+  status        TicketStatus @default(PENDING)
+  createdAt     DateTime     @default(now())
 
-  @@unique([tripId, seatNumber])
-  @@index([userId])
+  // ✅ THÊM MỚI — phục vụ hoàn tiền đúng số
+  paymentMethod String?      // "WALLET" | "LATER" | "GIFT" | "ADMIN_GRANT" | "LEGACY"
+  paidAmount    Decimal?     @db.Decimal(12, 2)
+
+  trip          Trips        @relation(fields: [tripId], references: [id])
+  user          Users        @relation(fields: [userId], references: [id])
+
+  @@index([tripId, seatNumber])
+  @@index([userId, status])
 }
 
 enum OtpType {
@@ -65,7 +70,7 @@ model OTP {
   id        Int      @id @default(autoincrement())
   email     String
   code      String   @db.VarChar(6)
-  type      OtpType  @default(REGISTER) 
+  type      OtpType  @default(REGISTER)
   attempts  Int      @default(0)        
   expiredAt DateTime
   createAt  DateTime @default(now())
@@ -80,33 +85,33 @@ enum Role {
 }
 
 enum TicketStatus {
-  HELD            
-  PENDING           
-  EXPIRED           
-  CONFIRMED         
-  USED              
-  CANCELED          
-  REVOKED_BY_ADMIN  
-  CANCELLED
+  HELD
+  PENDING
+  EXPIRED
+  CONFIRMED
+  USED
+  CANCELED          // giữ (code đang dùng)
+  REVOKED_BY_ADMIN
+  // CANCELLED        bỏ (trùng CANCELED)
 }
+
 model AuditLog {
   id            String   @id @default(uuid())
-  requestId     String   
+  requestId     String
   userId        Int?
-  action        String   
-  batchId       String?  
-  resource      String  
-  resourceId    String  
-  oldData       Json?    
-  newData       Json?   
-  isRevoked     Boolean  @default(false) 
+  action        String
+  batchId       String?
+  resource      String
+  resourceId    String
+  oldData       Json?
+  newData       Json?
+  isRevoked     Boolean  @default(false)
   ipAddress     String?
   createdAt     DateTime @default(now())
 
   @@index([requestId])
   @@index([userId])
   @@index([batchId])
-  
 }
 
 model BlacklistedIPs {
