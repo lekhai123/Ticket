@@ -1,16 +1,15 @@
 import React, { useState } from "react";
-import { Search, ChevronDown, ChevronRight, FileJson } from "lucide-react";
+import { ChevronDown, ChevronRight, FileJson } from "lucide-react";
 import { useAuditLogs } from "../../hooks/useAudit";
 import { Input } from "../../components/ui/Input";
 import { formatDate } from "../../utils/format";
+import { cn } from "../../utils/cn";
 
 export default function AuditLog() {
   const [search, setSearch] = useState("");
-  // 1. Đổi tên biến destructured thành rawData để tránh nhầm lẫn
   const { data: rawData, isLoading } = useAuditLogs({ search });
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
 
-  // 2. 🎯 Bóc tách chính xác mảng logs từ Object JSON trả về
   const logsList =
     rawData?.logs ||
     rawData?.data?.logs ||
@@ -19,9 +18,11 @@ export default function AuditLog() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Audit Logs</h1>
-        <p className="text-sm text-zinc-500">
-          Truy vết mọi biến động dữ liệu và tài sản (Realtime).
+        <h1 className="text-xl font-semibold tracking-tight text-[#F5F5F7]">
+          Audit Logs
+        </h1>
+        <p className="text-sm text-[#92929F] mt-1">
+          Truy vết mọi biến động dữ liệu.
         </p>
       </div>
 
@@ -29,94 +30,93 @@ export default function AuditLog() {
         <Input
           value={search}
           onChange={(e: any) => setSearch(e.target?.value ?? e)}
-          placeholder="Tìm theo Request ID, Batch ID..."
-          className="max-w-md bg-white dark:bg-zinc-950"
+          placeholder="Tìm Request ID, Batch ID..."
+          className="max-w-md bg-[#15151B] border-white/[0.08] text-[#F5F5F7]"
         />
       </div>
 
-      <div className="rounded-xl border border-zinc-200 bg-white shadow-sm overflow-hidden dark:border-zinc-800 dark:bg-zinc-950">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-zinc-50 text-xs uppercase text-zinc-500 dark:bg-zinc-900/50">
+      <div className="rounded-2xl border border-white/[0.08] bg-[#15151B] overflow-hidden">
+        <table className="w-full text-left text-sm whitespace-nowrap">
+          <thead className="border-b border-white/[0.08] text-[#92929F]">
             <tr>
-              <th className="w-10 px-4 py-3"></th>
-              <th className="px-4 py-3">Timestamp</th>
-              <th className="px-4 py-3">Action</th>
-              <th className="px-4 py-3">User ID</th>
-              <th className="px-4 py-3">Batch/Request ID</th>
+              <th className="w-10 px-4 py-3 font-medium"></th>
+              <th className="px-4 py-3 font-medium">Thời gian</th>
+              <th className="px-4 py-3 font-medium">Hành động</th>
+              <th className="px-4 py-3 font-medium">User ID</th>
+              <th className="px-4 py-3 font-medium">Batch/Request</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
+          <tbody className="divide-y divide-white/[0.04]">
             {isLoading ? (
               <tr>
-                <td colSpan={5} className="text-center py-10">
-                  Đang tải dữ liệu...
+                <td colSpan={5} className="text-center py-10 text-[#92929F]">
+                  Đang tải...
                 </td>
               </tr>
             ) : logsList.length === 0 ? (
               <tr>
-                <td colSpan={5} className="text-center py-10 text-zinc-500">
-                  Không tìm thấy lịch sử nào.
+                <td colSpan={5} className="text-center py-10 text-[#92929F]">
+                  Không có lịch sử.
                 </td>
               </tr>
             ) : (
-              // 3. 🎯 Dùng logsList (chắc chắn là Array) để map dữ liệu
               logsList.map((log: any) => (
                 <React.Fragment key={log.id}>
                   <tr
                     onClick={() =>
                       setExpandedRow(expandedRow === log.id ? null : log.id)
                     }
-                    className="cursor-pointer transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-900/50"
+                    className="cursor-pointer hover:bg-white/[0.02] transition-colors"
                   >
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 text-[#92929F]">
                       {expandedRow === log.id ? (
                         <ChevronDown className="h-4 w-4" />
                       ) : (
                         <ChevronRight className="h-4 w-4" />
                       )}
                     </td>
-                    <td className="px-4 py-3 font-medium">
+                    <td className="px-4 py-3 text-[#F5F5F7]">
                       {formatDate(log.createdAt)}
                     </td>
                     <td className="px-4 py-3">
-                      <span className="rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-semibold text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400">
+                      <span className="rounded-md bg-[#8B5CF6]/10 border border-[#8B5CF6]/20 px-2 py-0.5 text-xs font-medium text-[#8B5CF6]">
                         {log.action}
                       </span>
                     </td>
-                    <td className="px-4 py-3 font-mono">{log.userId}</td>
+                    <td className="px-4 py-3 font-mono text-[#92929F]">
+                      {log.userId}
+                    </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-col">
-                        <span className="font-medium text-amber-600 dark:text-amber-400">
+                        <span className="text-xs font-medium text-amber-400">
                           {log.batchId || "-"}
                         </span>
-                        <span className="text-xs text-zinc-400 font-mono">
+                        <span className="text-[10px] text-[#92929F] font-mono">
                           {log.requestId}
                         </span>
                       </div>
                     </td>
                   </tr>
-
-                  {/* Dòng hiển thị chi tiết (Expanded) */}
                   {expandedRow === log.id && (
                     <tr>
                       <td
                         colSpan={5}
-                        className="bg-zinc-50 px-8 py-4 dark:bg-zinc-900/20"
+                        className="bg-[#0D0D10] px-6 py-4 border-b border-white/[0.04]"
                       >
-                        <div className="grid grid-cols-2 gap-6">
-                          <div className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
-                            <div className="mb-2 flex text-xs font-semibold text-zinc-500 uppercase">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="rounded-xl border border-white/[0.08] bg-[#15151B] p-3">
+                            <div className="mb-2 flex text-xs font-medium text-[#92929F] uppercase tracking-wider">
                               <FileJson className="h-4 w-4 mr-2" /> Old Data
                             </div>
-                            <pre className="text-xs text-red-500 overflow-x-auto font-mono">
+                            <pre className="text-xs text-rose-400 overflow-x-auto font-mono custom-scrollbar">
                               {JSON.stringify(log.oldData, null, 2)}
                             </pre>
                           </div>
-                          <div className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
-                            <div className="mb-2 flex text-xs font-semibold text-zinc-500 uppercase">
+                          <div className="rounded-xl border border-white/[0.08] bg-[#15151B] p-3">
+                            <div className="mb-2 flex text-xs font-medium text-[#92929F] uppercase tracking-wider">
                               <FileJson className="h-4 w-4 mr-2" /> New Data
                             </div>
-                            <pre className="text-xs text-emerald-500 overflow-x-auto font-mono">
+                            <pre className="text-xs text-emerald-400 overflow-x-auto font-mono custom-scrollbar">
                               {JSON.stringify(log.newData, null, 2)}
                             </pre>
                           </div>

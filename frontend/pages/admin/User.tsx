@@ -10,18 +10,20 @@ export default function Users() {
   const [search, setSearch] = useState("");
   const { users, isLoading, updateStatus } = useUsers({ search });
 
-  // Đảm bảo userList luôn luôn là một mảng để không bị văng lỗi .map()
   const userList = Array.isArray(users)
     ? users
     : (users as any)?.users ||
       (users as any)?.data?.users ||
       (users as any)?.data ||
       [];
+
   const handleToggleStatus = async (userId: number, currentStatus: string) => {
     const newStatus = currentStatus === "ACTIVE" ? "BANNED" : "ACTIVE";
-    const actionName = newStatus === "BANNED" ? "KHÓA" : "MỞ KHÓA";
-
-    if (confirm(`Bạn có chắc chắn muốn ${actionName} tài khoản này không?`)) {
+    if (
+      confirm(
+        `Xác nhận ${newStatus === "BANNED" ? "KHÓA" : "MỞ KHÓA"} tài khoản này?`,
+      )
+    ) {
       try {
         await updateStatus({ id: userId, status: newStatus });
       } catch (err: any) {
@@ -34,11 +36,11 @@ export default function Users() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">
+          <h1 className="text-xl font-semibold tracking-tight text-[#F5F5F7]">
             Quản lý Người Dùng
           </h1>
-          <p className="text-sm text-zinc-500">
-            Giám sát và phân quyền toàn bộ tài khoản trên hệ thống.
+          <p className="text-sm text-[#92929F] mt-1">
+            Giám sát và phân quyền hệ thống.
           </p>
         </div>
       </div>
@@ -48,91 +50,87 @@ export default function Users() {
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Tìm theo Tên, Email..."
-            className="w-full bg-white dark:bg-zinc-950 pl-10"
+            placeholder="Tìm Tên, Email..."
+            className="w-full bg-[#15151B] border-white/[0.08] text-[#F5F5F7] pl-10"
           />
-          <Search className="absolute left-3 top-3 h-5 w-5 text-zinc-400" />
+          <Search className="absolute left-3 top-3 h-4 w-4 text-[#92929F]" />
         </div>
-        <button className="flex h-11 items-center justify-center rounded-xl border border-zinc-200 bg-white px-4 text-sm hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950 dark:hover:bg-zinc-900">
-          <Filter className="mr-2 h-4 w-4" /> Bộ lọc
-        </button>
       </div>
 
-      <div className="rounded-xl border border-zinc-200 bg-white shadow-sm overflow-hidden dark:border-zinc-800 dark:bg-zinc-950">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-zinc-50 text-xs uppercase text-zinc-500 dark:bg-zinc-900/50">
+      <div className="rounded-2xl border border-white/[0.08] bg-[#15151B] overflow-hidden">
+        <table className="w-full text-left text-sm whitespace-nowrap">
+          <thead className="border-b border-white/[0.08] text-[#92929F]">
             <tr>
-              <th className="px-6 py-4">User</th>
-              <th className="px-6 py-4">Role</th>
-              <th className="px-6 py-4">VIP Level</th>
-              <th className="px-6 py-4">Ví / Số dư</th>
-              <th className="px-6 py-4">Trạng thái</th>
-              <th className="px-6 py-4 text-right">Actions</th>
+              <th className="px-6 py-4 font-medium">User</th>
+              <th className="px-6 py-4 font-medium">Role</th>
+              <th className="px-6 py-4 font-medium">VIP</th>
+              <th className="px-6 py-4 font-medium">Số dư</th>
+              <th className="px-6 py-4 font-medium">Trạng thái</th>
+              <th className="px-6 py-4 font-medium text-right">Hành động</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
+          <tbody className="divide-y divide-white/[0.04]">
             {isLoading ? (
               <tr>
-                <td colSpan={6} className="text-center py-10 text-zinc-500">
-                  Đang tải dữ liệu người dùng...
+                <td colSpan={6} className="text-center py-10 text-[#92929F]">
+                  Đang tải...
                 </td>
               </tr>
             ) : userList.length === 0 ? (
               <tr>
-                <td colSpan={6} className="text-center py-10 text-zinc-500">
-                  Không tìm thấy người dùng nào.
+                <td colSpan={6} className="text-center py-10 text-[#92929F]">
+                  Không có dữ liệu.
                 </td>
               </tr>
             ) : (
               userList.map((u: any) => {
-                // Đọc tên người dùng an toàn (fullName -> name -> fallback)
                 const userName = u.fullName || u.name || "Người dùng";
-                const userInitial = userName.charAt(0).toUpperCase();
-
                 return (
                   <tr
                     key={u.id}
-                    className="transition hover:bg-zinc-50 dark:hover:bg-zinc-900/30"
+                    className="hover:bg-white/[0.02] transition-colors"
                   >
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-100 text-indigo-700 font-bold dark:bg-indigo-900/30 dark:text-indigo-400">
-                          {userInitial}
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#0D0D10] border border-white/[0.08] text-[#8B5CF6] font-bold text-xs">
+                          {userName.charAt(0).toUpperCase()}
                         </div>
                         <div>
-                          <p className="font-semibold">{userName}</p>
-                          <p className="text-xs text-zinc-500">{u.email}</p>
+                          <p className="font-medium text-[#F5F5F7]">
+                            {userName}
+                          </p>
+                          <p className="text-xs text-[#92929F]">{u.email}</p>
                         </div>
                       </div>
                     </td>
                     <td className="px-6 py-4">
                       <span
                         className={cn(
-                          "inline-flex rounded-md px-2 py-1 text-xs font-semibold",
+                          "inline-flex rounded-md px-2 py-1 text-xs font-medium",
                           u.role === "ADMIN"
-                            ? "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400"
-                            : "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300",
+                            ? "bg-[#8B5CF6]/10 text-[#8B5CF6] border border-[#8B5CF6]/20"
+                            : "bg-white/[0.04] text-[#92929F] border border-white/[0.08]",
                         )}
                       >
                         {u.role}
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      <VipBadge level={u.vipLevel ?? u.vip_level ?? 0} />
+                      <VipBadge level={u.vipLevel ?? 0} />
                     </td>
-                    <td className="px-6 py-4 font-mono font-medium text-indigo-600 dark:text-indigo-400">
+                    <td className="px-6 py-4 font-medium text-[#F5F5F7]">
                       {formatCurrency(u.balance ?? u.wallet?.balance ?? 0)}
                     </td>
                     <td className="px-6 py-4">
                       {u.status === "ACTIVE" ? (
-                        <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-600">
-                          <div className="h-2 w-2 rounded-full bg-emerald-500" />{" "}
+                        <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-400">
+                          <div className="h-1.5 w-1.5 rounded-full bg-emerald-400" />{" "}
                           Hoạt động
                         </span>
                       ) : (
-                        <span className="flex items-center gap-1.5 text-xs font-medium text-red-600">
-                          <div className="h-2 w-2 rounded-full bg-red-500" /> Bị
-                          khóa
+                        <span className="flex items-center gap-1.5 text-xs font-medium text-rose-400">
+                          <div className="h-1.5 w-1.5 rounded-full bg-rose-400" />{" "}
+                          Bị khóa
                         </span>
                       )}
                     </td>
@@ -140,18 +138,18 @@ export default function Users() {
                       {u.status === "ACTIVE" ? (
                         <button
                           onClick={() => handleToggleStatus(u.id, u.status)}
-                          className="p-2 text-zinc-400 hover:text-red-500 transition"
-                          title="Khóa tài khoản"
+                          className="p-2 text-[#92929F] hover:text-rose-400 transition"
+                          title="Khóa"
                         >
-                          <Ban className="h-5 w-5" />
+                          <Ban className="h-4 w-4" />
                         </button>
                       ) : (
                         <button
                           onClick={() => handleToggleStatus(u.id, u.status)}
-                          className="p-2 text-zinc-400 hover:text-emerald-500 transition"
+                          className="p-2 text-[#92929F] hover:text-emerald-400 transition"
                           title="Mở khóa"
                         >
-                          <Unlock className="h-5 w-5" />
+                          <Unlock className="h-4 w-4" />
                         </button>
                       )}
                     </td>

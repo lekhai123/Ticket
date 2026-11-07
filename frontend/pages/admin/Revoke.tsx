@@ -2,77 +2,67 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { RotateCcw, ShieldAlert } from "lucide-react";
 import { adminApi } from "../../api/admin.api";
-import { useAuthStore } from "../../store/authStore";
 import { Input } from "../../components/ui/Input";
 import { Button } from "../../components/ui/Button";
 
 export default function Revoke() {
   const [batchId, setBatchId] = useState("");
-  const user = useAuthStore((state) => state.user);
   const queryClient = useQueryClient();
 
   const revokeMutation = useMutation({
-    mutationFn: (batchId: string) =>
-      adminApi.revokeBatch({ batchId, adminUserId: user!.id }),
+    // SỬA: Chỉ truyền batchId, không truyền adminUserId
+    mutationFn: (batchId: string) => adminApi.revokeBatch({ batchId }),
     onSuccess: (data) => {
-      alert(`Đã thu hồi thành công ${data.data.revokedCount} giao dịch!`);
+      alert(`Đã thu hồi ${data.data.revokedCount} giao dịch!`);
       setBatchId("");
-      // Cập nhật lại list Audit Logs
       queryClient.invalidateQueries({ queryKey: ["audit-logs"] });
     },
     onError: (err: any) => {
-      alert(
-        err.message ||
-          "Lỗi khi thu hồi. Có thể giao dịch đã bị thu hồi trước đó.",
-      );
+      alert(err.message || "Lỗi thu hồi.");
     },
   });
 
-  const handleRevoke = () => {
-    if (!batchId) return;
-    if (
-      confirm(
-        `⚠️ Bạn có chắc chắn muốn THU HỒI toàn bộ tiền/vé của đợt phát [${batchId}] không? Hành động này sẽ trừ tiền User.`,
-      )
-    ) {
-      revokeMutation.mutate(batchId);
-    }
-  };
-
   return (
-    <div className="max-w-2xl mx-auto space-y-6 pt-10">
-      <div className="text-center mb-10">
-        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30 mb-4">
-          <RotateCcw className="h-8 w-8 text-red-600 dark:text-red-500" />
+    <div className="max-w-xl mx-auto space-y-6 pt-10">
+      <div className="text-center mb-8">
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-rose-500/10 border border-rose-500/20 mb-4">
+          <RotateCcw className="h-7 w-7 text-rose-400" />
         </div>
-        <h1 className="text-3xl font-bold tracking-tight">Revoke Center</h1>
-        <p className="text-zinc-500 mt-2">
-          Công cụ thu hồi khẩn cấp giao dịch hàng loạt thông qua Database
-          Transaction.
+        <h1 className="text-xl font-semibold text-[#F5F5F7]">
+          Thu hồi (Revoke)
+        </h1>
+        <p className="text-sm text-[#92929F] mt-1">
+          Thu hồi khẩn cấp giao dịch hàng loạt.
         </p>
       </div>
 
-      <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-xl dark:border-zinc-800 dark:bg-zinc-950">
-        <h3 className="text-lg font-semibold border-b border-zinc-100 pb-4 mb-4 flex items-center gap-2 dark:border-zinc-800">
-          <ShieldAlert className="h-5 w-5 text-amber-500" /> Nhập mã Batch ID
-          cần thu hồi
+      <div className="rounded-2xl border border-white/[0.08] bg-[#15151B] p-6">
+        <h3 className="text-sm font-medium border-b border-white/[0.08] pb-3 mb-4 flex items-center gap-2 text-[#F5F5F7]">
+          <ShieldAlert className="h-4 w-4 text-amber-400" /> Nhập Batch ID cần
+          thu hồi
         </h3>
-
         <div className="space-y-4">
           <Input
             value={batchId}
             onChange={(e) => setBatchId(e.target.value.toUpperCase())}
             placeholder="VD: NIGHT_CRON_BUG_2026"
-            className="font-mono text-center text-lg uppercase"
+            className="font-mono text-center tracking-widest uppercase bg-[#0D0D10] border-white/[0.08] text-[#F5F5F7]"
           />
           <Button
-            variant="destructive"
-            className="w-full h-12 text-base font-bold"
+            className="w-full bg-rose-600 hover:bg-rose-700 text-white"
             disabled={!batchId}
             isLoading={revokeMutation.isPending}
-            onClick={handleRevoke}
+            onClick={() => {
+              if (
+                confirm(
+                  `THU HỒI toàn bộ đợt [${batchId}]? Hành động này sẽ trừ tiền User.`,
+                )
+              ) {
+                revokeMutation.mutate(batchId);
+              }
+            }}
           >
-            Tiến hành Thu hồi Giao dịch (Rollback)
+            Tiến hành Thu hồi
           </Button>
         </div>
       </div>

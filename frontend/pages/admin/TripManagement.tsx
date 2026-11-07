@@ -1,20 +1,19 @@
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { tripApi, Trip } from "../../api/trip.api";
+import { cn } from "../../utils/cn";
 
 export default function TripManagement() {
   const queryClient = useQueryClient();
   const [editingTrip, setEditingTrip] = useState<Trip | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // Form states
   const [route, setRoute] = useState("");
   const [departureAt, setDepartureAt] = useState("");
   const [price, setPrice] = useState(250000);
   const [totalSeats, setTotalSeats] = useState(30);
   const [description, setDescription] = useState("");
 
-  // Lấy danh sách toàn bộ chuyến xe dành cho Admin
   const { data: trips = [], isLoading } = useQuery<Trip[], Error>({
     queryKey: ["admin-trips"],
     queryFn: tripApi.getAllForAdmin,
@@ -49,22 +48,16 @@ export default function TripManagement() {
         totalSeats: Number(totalSeats),
         description,
       };
-
-      if (editingTrip) {
-        return await tripApi.update(editingTrip.id, payload);
-      } else {
-        return await tripApi.create(payload);
-      }
+      return editingTrip
+        ? await tripApi.update(editingTrip.id, payload)
+        : await tripApi.create(payload);
     },
     onSuccess: () => {
-      // Load lại cả danh sách của Admin và danh sách của Khách
       queryClient.invalidateQueries({ queryKey: ["admin-trips"] });
       queryClient.invalidateQueries({ queryKey: ["trips", "default"] });
       setIsModalOpen(false);
     },
-    onError: (err: any) => {
-      alert(err.message || "Có lỗi xảy ra khi lưu!");
-    },
+    onError: (err: any) => alert(err.message || "Có lỗi xảy ra khi lưu!"),
   });
 
   const deleteMutation = useMutation({
@@ -73,94 +66,96 @@ export default function TripManagement() {
       queryClient.invalidateQueries({ queryKey: ["admin-trips"] });
       queryClient.invalidateQueries({ queryKey: ["trips", "default"] });
     },
-    onError: (err: any) => {
-      // Hiển thị lỗi chặn xóa nếu chuyến đã có vé thanh toán
-      alert(err.message || "Không thể xoá chuyến xe này!");
-    },
+    onError: (err: any) => alert(err.message || "Không thể xoá chuyến xe này!"),
   });
 
   return (
-    <div className="p-6 text-zinc-100 max-w-7xl mx-auto">
-      <div className="flex justify-between items-center mb-6">
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold">Quản lý Chuyến xe</h1>
-          <p className="text-sm text-zinc-400">
-            Thêm, sửa, xoá và theo dõi số chỗ thực tế theo thời gian thực
+          <h1 className="text-xl font-semibold tracking-tight text-[#F5F5F7]">
+            Quản lý Chuyến xe
+          </h1>
+          <p className="text-sm text-[#92929F] mt-1">
+            Thêm, sửa, xoá và theo dõi số chỗ thực tế.
           </p>
         </div>
         <button
           onClick={openCreateModal}
-          className="bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded-lg font-medium text-sm transition"
+          className="bg-[#8B5CF6] hover:bg-[#7C3AED] px-4 py-2 rounded-xl text-sm font-medium text-white transition-all shadow-[0_0_15px_rgba(139,92,246,0.3)]"
         >
-          + Thêm chuyến mới
+          + Thêm chuyến
         </button>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-zinc-800 bg-zinc-900/50">
-        <table className="w-full text-left text-sm">
-          <thead className="border-b border-zinc-800 bg-zinc-800/40 text-zinc-400">
+      <div className="overflow-x-auto rounded-2xl border border-white/[0.08] bg-[#15151B]">
+        <table className="w-full text-left text-sm whitespace-nowrap">
+          <thead className="border-b border-white/[0.08] text-[#92929F]">
             <tr>
-              <th className="p-4">ID</th>
-              <th className="p-4">Tuyến xe</th>
-              <th className="p-4">Khởi hành</th>
-              <th className="p-4">Giá vé</th>
-              <th className="p-4 text-center">Chỗ trống / Tổng</th>
-              <th className="p-4 text-right">Thao tác</th>
+              <th className="p-4 font-medium">ID</th>
+              <th className="p-4 font-medium">Tuyến xe</th>
+              <th className="p-4 font-medium">Khởi hành</th>
+              <th className="p-4 font-medium">Giá vé</th>
+              <th className="p-4 font-medium text-center">Chỗ trống</th>
+              <th className="p-4 font-medium text-right">Thao tác</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-zinc-800">
+          <tbody className="divide-y divide-white/[0.04]">
             {isLoading ? (
               <tr>
-                <td colSpan={6} className="p-8 text-center text-zinc-500">
-                  Đang tải dữ liệu...
+                <td colSpan={6} className="p-8 text-center text-[#92929F]">
+                  Đang tải...
                 </td>
               </tr>
             ) : trips.length === 0 ? (
               <tr>
-                <td colSpan={6} className="p-8 text-center text-zinc-500">
+                <td colSpan={6} className="p-8 text-center text-[#92929F]">
                   Chưa có chuyến xe nào
                 </td>
               </tr>
             ) : (
               trips.map((trip) => (
-                <tr key={trip.id} className="hover:bg-zinc-800/30 transition">
-                  <td className="p-4 font-mono text-xs text-zinc-500">
+                <tr
+                  key={trip.id}
+                  className="hover:bg-white/[0.02] transition-colors"
+                >
+                  <td className="p-4 font-mono text-xs text-[#92929F]">
                     #{trip.id}
                   </td>
-                  <td className="p-4 font-medium text-white">{trip.route}</td>
-                  <td className="p-4 text-zinc-300">
+                  <td className="p-4 font-medium text-[#F5F5F7]">
+                    {trip.route}
+                  </td>
+                  <td className="p-4 text-[#92929F]">
                     {new Date(trip.departureAt).toLocaleString("vi-VN")}
                   </td>
-                  <td className="p-4 font-semibold text-emerald-400">
+                  <td className="p-4 font-medium text-[#F5F5F7]">
                     {trip.price.toLocaleString("vi-VN")} đ
                   </td>
                   <td className="p-4 text-center">
                     <span
-                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                      className={cn(
+                        "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border",
                         trip.availableSeats === 0
-                          ? "bg-rose-500/10 text-rose-400 border border-rose-500/20"
-                          : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                      }`}
+                          ? "bg-rose-500/10 text-rose-400 border-rose-500/20"
+                          : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+                      )}
                     >
-                      {trip.availableSeats} / {trip.totalSeats} chỗ
+                      {trip.availableSeats} / {trip.totalSeats}
                     </span>
                   </td>
                   <td className="p-4 text-right space-x-2">
                     <button
                       onClick={() => openEditModal(trip)}
-                      className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded text-xs transition"
+                      className="px-3 py-1.5 bg-white/[0.04] hover:bg-white/[0.08] text-[#F5F5F7] rounded-lg text-xs transition"
                     >
                       Sửa
                     </button>
                     <button
                       onClick={() => {
-                        if (
-                          confirm(`Bạn có chắc muốn xóa chuyến #${trip.id}?`)
-                        ) {
+                        if (confirm(`Xóa chuyến #${trip.id}?`))
                           deleteMutation.mutate(trip.id);
-                        }
                       }}
-                      className="px-3 py-1.5 bg-rose-950/40 border border-rose-800 hover:bg-rose-900 text-rose-300 rounded text-xs transition"
+                      className="px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 rounded-lg text-xs transition"
                     >
                       Xóa
                     </button>
@@ -172,14 +167,13 @@ export default function TripManagement() {
         </table>
       </div>
 
-      {/* Modal Thêm / Cập nhật */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-xl">
-            <h2 className="text-lg font-bold mb-4">
+          <div className="w-full max-w-md rounded-3xl border border-white/[0.08] bg-[#15151B] p-6 shadow-2xl">
+            <h2 className="text-lg font-semibold mb-5 text-[#F5F5F7]">
               {editingTrip
                 ? `Chỉnh sửa chuyến #${editingTrip.id}`
-                : "Thêm chuyến xe mới"}
+                : "Thêm chuyến mới"}
             </h2>
             <form
               onSubmit={(e) => {
@@ -189,19 +183,16 @@ export default function TripManagement() {
               className="space-y-4 text-sm"
             >
               <div>
-                <label className="block text-zinc-400 mb-1">
-                  Tuyến xe (VD: Sài Gòn - Đà Lạt)
-                </label>
+                <label className="block text-[#92929F] mb-1.5">Tuyến xe</label>
                 <input
                   required
                   value={route}
                   onChange={(e) => setRoute(e.target.value)}
-                  className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-white focus:border-indigo-500 focus:outline-none"
+                  className="w-full rounded-xl border border-white/[0.08] bg-[#0D0D10] px-3 py-2 text-[#F5F5F7] focus:border-[#8B5CF6] focus:outline-none"
                 />
               </div>
-
               <div>
-                <label className="block text-zinc-400 mb-1">
+                <label className="block text-[#92929F] mb-1.5">
                   Thời gian khởi hành
                 </label>
                 <input
@@ -209,15 +200,12 @@ export default function TripManagement() {
                   required
                   value={departureAt}
                   onChange={(e) => setDepartureAt(e.target.value)}
-                  className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-white focus:border-indigo-500 focus:outline-none"
+                  className="w-full rounded-xl border border-white/[0.08] bg-[#0D0D10] px-3 py-2 text-[#F5F5F7] focus:border-[#8B5CF6] focus:outline-none"
                 />
               </div>
-
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-zinc-400 mb-1">
-                    Giá vé (VNĐ)
-                  </label>
+                  <label className="block text-[#92929F] mb-1.5">Giá vé</label>
                   <input
                     type="number"
                     min={0}
@@ -225,13 +213,11 @@ export default function TripManagement() {
                     required
                     value={price}
                     onChange={(e) => setPrice(Number(e.target.value))}
-                    className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-white focus:border-indigo-500 focus:outline-none"
+                    className="w-full rounded-xl border border-white/[0.08] bg-[#0D0D10] px-3 py-2 text-[#F5F5F7] focus:border-[#8B5CF6] focus:outline-none"
                   />
                 </div>
                 <div>
-                  <label className="block text-zinc-400 mb-1">
-                    Tổng số ghế
-                  </label>
+                  <label className="block text-[#92929F] mb-1.5">Số ghế</label>
                   <input
                     type="number"
                     min={1}
@@ -239,38 +225,33 @@ export default function TripManagement() {
                     required
                     value={totalSeats}
                     onChange={(e) => setTotalSeats(Number(e.target.value))}
-                    className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-white focus:border-indigo-500 focus:outline-none"
+                    className="w-full rounded-xl border border-white/[0.08] bg-[#0D0D10] px-3 py-2 text-[#F5F5F7] focus:border-[#8B5CF6] focus:outline-none"
                   />
                 </div>
               </div>
-
               <div>
-                <label className="block text-zinc-400 mb-1">
-                  Mô tả / Tiện ích (Hỗ trợ AI Search)
-                </label>
+                <label className="block text-[#92929F] mb-1.5">Mô tả</label>
                 <textarea
                   rows={3}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Xe limousine giường phòng, wifi, đón tận nơi..."
-                  className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-white focus:border-indigo-500 focus:outline-none"
+                  className="w-full rounded-xl border border-white/[0.08] bg-[#0D0D10] px-3 py-2 text-[#F5F5F7] focus:border-[#8B5CF6] focus:outline-none"
                 />
               </div>
-
-              <div className="flex justify-end space-x-3 pt-3">
+              <div className="flex justify-end space-x-3 pt-4">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="rounded-lg px-4 py-2 text-zinc-400 hover:bg-zinc-800 transition"
+                  className="rounded-xl px-4 py-2 text-[#92929F] hover:bg-white/[0.04] transition"
                 >
                   Hủy
                 </button>
                 <button
                   type="submit"
                   disabled={saveMutation.isPending}
-                  className="rounded-lg bg-indigo-600 px-4 py-2 font-medium text-white hover:bg-indigo-500 transition disabled:opacity-50"
+                  className="rounded-xl bg-[#8B5CF6] px-4 py-2 font-medium text-white hover:bg-[#7C3AED] disabled:opacity-50 transition"
                 >
-                  {saveMutation.isPending ? "Đang lưu..." : "Lưu chuyến"}
+                  {saveMutation.isPending ? "Đang lưu..." : "Lưu"}
                 </button>
               </div>
             </form>
