@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useAuthStore } from "../../store/authStore";
 import { useAuth } from "../../hooks/useAuth";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ticketApi } from "../../api/ticket.api";
+import { bookingApi } from "../../api/booking.api";
 import { Button } from "../../components/ui/Button";
 import { VipBadge } from "../../components/common/VipBadge";
 import { formatCurrency, formatDate } from "../../utils/format";
@@ -20,6 +20,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { cn } from "../../utils/cn";
 
 export default function Profile() {
   const user = useAuthStore((state) => state.user);
@@ -29,29 +30,25 @@ export default function Profile() {
 
   const [activeTab, setActiveTab] = useState<"info" | "tickets">("info");
   const { updateAvatar, isUploadingAvatar } = useUser();
-  // Fetch danh sách vé
+
   const { data: ticketsResponse, isLoading: isLoadingTickets } = useQuery({
     queryKey: ["my-tickets", user?.id],
-    queryFn: () => ticketApi.getUserTickets(),
+    queryFn: () => bookingApi.getMyTickets(),
     enabled: !!user?.id && activeTab === "tickets",
   });
 
-  // Mutation Hủy vé: Cập nhật invalidate cả "trips" để sơ đồ ghế nhả về Trống
   const cancelMutation = useMutation({
-    mutationFn: (ticketId: number) => ticketApi.cancelTicket(ticketId),
+    mutationFn: (ticketId: number) => bookingApi.cancelBooking(ticketId),
     onSuccess: (res) => {
       alert(res.message || "Hủy vé thành công và đã hoàn tiền vào ví!");
       queryClient.invalidateQueries({ queryKey: ["my-tickets"] });
       queryClient.invalidateQueries({ queryKey: ["wallet"] });
-      queryClient.invalidateQueries({ queryKey: ["trips"] }); // 🎯 Nhả ghế trên sơ đồ
+      queryClient.invalidateQueries({ queryKey: ["trips"] });
       queryClient.invalidateQueries({ queryKey: ["trip"] });
     },
-    onError: (err: any) => {
-      alert(err.response?.data?.message || "Hủy vé thất bại!");
-    },
+    onError: (err: any) => alert(err.message || "Hủy vé thất bại!"),
   });
 
-  // 🎯 Đăng xuất chuẩn: Gọi API Logout (Xóa Cookie) -> Clear Zustand -> Chuyển hướng
   const handleLogout = async () => {
     try {
       await logout();
@@ -61,13 +58,11 @@ export default function Profile() {
     }
   };
 
-  // 🎯 Chuẩn bị sự kiện chọn file Avatar (Sẽ kết nối useUser hook)
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     try {
-      await updateAvatar(file); // 🎯 Upload và cập nhật UI ngay lập tức
+      await updateAvatar(file);
     } catch (error) {
       console.error(error);
     }
@@ -75,47 +70,48 @@ export default function Profile() {
 
   if (!user) return null;
 
-  const displayName =
-    (user as any)?.fullName || (user as any)?.name || "Người dùng";
+  const displayName = user?.fullName || "Người dùng";
   const avatarInitial = displayName.charAt(0).toUpperCase();
-  const avatarUrl = (user as any)?.avatarUrl || (user as any)?.avatar;
+  const avatarUrl = user?.avatarUrl;
   const tickets = ticketsResponse?.data || [];
 
   return (
     <div className="max-w-4xl mx-auto py-10 px-4">
-      <h1 className="text-3xl font-bold mb-8 tracking-tight">Trang cá nhân</h1>
+      <h1 className="text-2xl font-semibold tracking-tight mb-8 text-[#F5F5F7]">
+        Trang cá nhân
+      </h1>
 
-      {/* Thanh chuyển Tab */}
-      <div className="flex gap-4 mb-8 border-b border-zinc-200 dark:border-zinc-800">
+      {/* Tabs */}
+      <div className="flex gap-6 mb-8 border-b border-white/[0.08]">
         <button
           onClick={() => setActiveTab("info")}
-          className={`pb-4 text-sm font-semibold flex items-center gap-2 border-b-2 transition-all ${
+          className={cn(
+            "pb-4 text-sm font-medium flex items-center gap-2 border-b-2 transition-all",
             activeTab === "info"
-              ? "border-indigo-600 text-indigo-600"
-              : "border-transparent text-zinc-500 hover:text-zinc-800"
-          }`}
+              ? "border-[#8B5CF6] text-[#8B5CF6]"
+              : "border-transparent text-[#92929F] hover:text-[#F5F5F7]",
+          )}
         >
           <UserIcon className="h-4 w-4" /> Thông tin cá nhân
         </button>
         <button
           onClick={() => setActiveTab("tickets")}
-          className={`pb-4 text-sm font-semibold flex items-center gap-2 border-b-2 transition-all ${
+          className={cn(
+            "pb-4 text-sm font-medium flex items-center gap-2 border-b-2 transition-all",
             activeTab === "tickets"
-              ? "border-indigo-600 text-indigo-600"
-              : "border-transparent text-zinc-500 hover:text-zinc-800"
-          }`}
+              ? "border-[#8B5CF6] text-[#8B5CF6]"
+              : "border-transparent text-[#92929F] hover:text-[#F5F5F7]",
+          )}
         >
           <Ticket className="h-4 w-4" /> Vé của tôi
         </button>
       </div>
 
-      {/* TAB 1: THÔNG TIN CÁ NHÂN */}
       {activeTab === "info" && (
-        <div className="rounded-3xl border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-          <div className="flex items-center gap-6 mb-8 border-b border-zinc-100 pb-8 dark:border-zinc-800">
-            {/* 🎯 AVATAR VỚI NÚT CHỌN ĐỔI ẢNH */}
+        <div className="rounded-3xl border border-white/[0.08] bg-[#15151B] p-8">
+          <div className="flex items-center gap-6 mb-8 border-b border-white/[0.08] pb-8">
             <div className="relative group">
-              <div className="h-24 w-24 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 text-3xl font-bold dark:bg-indigo-900/30 dark:text-indigo-400 overflow-hidden border-2 border-indigo-200 dark:border-indigo-900">
+              <div className="h-24 w-24 rounded-full bg-[#0D0D10] flex items-center justify-center text-[#8B5CF6] text-3xl font-bold overflow-hidden border border-white/[0.08]">
                 {avatarUrl ? (
                   <img
                     src={avatarUrl}
@@ -126,11 +122,9 @@ export default function Profile() {
                   avatarInitial
                 )}
               </div>
-
-              {/* Overlay Nút Tải Ảnh */}
               <label
                 htmlFor="avatar-upload"
-                className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                className="absolute inset-0 bg-black/60 rounded-full flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
               >
                 {isUploadingAvatar ? (
                   <Loader2 className="h-6 w-6 animate-spin" />
@@ -147,9 +141,8 @@ export default function Profile() {
                 />
               </label>
             </div>
-
             <div>
-              <h2 className="text-2xl font-bold text-zinc-900 dark:text-white mb-2">
+              <h2 className="text-xl font-semibold text-[#F5F5F7] mb-2">
                 {displayName}
               </h2>
               <VipBadge level={(user as any)?.vipLevel ?? 0} />
@@ -158,34 +151,36 @@ export default function Profile() {
 
           <div className="space-y-6 max-w-md">
             <div className="flex items-center gap-4">
-              <div className="p-3 rounded-xl bg-zinc-100 dark:bg-zinc-900">
-                <Mail className="h-5 w-5 text-zinc-600 dark:text-zinc-400" />
+              <div className="p-3 rounded-xl bg-[#0D0D10] border border-white/[0.04] text-[#92929F]">
+                <Mail className="h-5 w-5" />
               </div>
               <div>
-                <p className="text-sm font-medium text-zinc-500">
+                <p className="text-xs font-medium text-[#92929F]">
                   Email đăng nhập
                 </p>
-                <p className="font-semibold">{user.email}</p>
+                <p className="text-sm font-medium text-[#F5F5F7]">
+                  {user.email}
+                </p>
               </div>
             </div>
             <div className="flex items-center gap-4">
-              <div className="p-3 rounded-xl bg-zinc-100 dark:bg-zinc-900">
-                <Shield className="h-5 w-5 text-zinc-600 dark:text-zinc-400" />
+              <div className="p-3 rounded-xl bg-[#0D0D10] border border-white/[0.04] text-[#92929F]">
+                <Shield className="h-5 w-5" />
               </div>
               <div>
-                <p className="text-sm font-medium text-zinc-500">Vai trò</p>
-                <p className="font-semibold">
+                <p className="text-xs font-medium text-[#92929F]">Vai trò</p>
+                <p className="text-sm font-medium text-[#F5F5F7]">
                   {user.role === "ADMIN" ? "Quản trị viên" : "Khách hàng"}
                 </p>
               </div>
             </div>
           </div>
 
-          <div className="mt-10 pt-6 border-t border-zinc-100 dark:border-zinc-800">
+          <div className="mt-10 pt-6 border-t border-white/[0.08]">
             <Button
-              variant="destructive"
+              variant="outline"
               onClick={handleLogout}
-              className="w-full sm:w-auto"
+              className="text-rose-400 border-rose-500/20 hover:bg-rose-500/10 hover:text-rose-300"
             >
               <LogOut className="mr-2 h-4 w-4" /> Đăng xuất
             </Button>
@@ -193,15 +188,14 @@ export default function Profile() {
         </div>
       )}
 
-      {/* TAB 2: VÉ CỦA TÔI */}
       {activeTab === "tickets" && (
         <div className="space-y-4">
           {isLoadingTickets ? (
-            <div className="text-center py-12 text-zinc-500">
+            <div className="text-center py-12 text-[#92929F]">
               Đang tải danh sách vé...
             </div>
           ) : tickets.length === 0 ? (
-            <div className="text-center py-12 border border-dashed rounded-3xl bg-zinc-50 text-zinc-500 dark:bg-zinc-900/50">
+            <div className="text-center py-12 border border-dashed border-white/[0.08] rounded-3xl bg-[#15151B]/50 text-[#92929F]">
               Bạn chưa đặt chuyến xe nào.
             </div>
           ) : (
@@ -210,94 +204,82 @@ export default function Profile() {
               const departureTime = new Date(
                 ticket.trip?.departureAt,
               ).getTime();
-              const ONE_HOUR_IN_MS = 60 * 60 * 1000;
-
               const isMoreThanOneHourLeft =
-                departureTime - now > ONE_HOUR_IN_MS;
-
-              // 🎯 Chỉ cho phép hủy khi vé đang ở trạng thái CONFIRMED và còn trên 1 tiếng
+                departureTime - now > 60 * 60 * 1000;
               const canCancel =
                 ticket.status === "CONFIRMED" && isMoreThanOneHourLeft;
 
               return (
                 <div
                   key={ticket.id}
-                  className={`border rounded-3xl p-6 bg-white shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4 dark:bg-zinc-950 transition-colors ${
+                  className={cn(
+                    "border rounded-2xl p-6 bg-[#15151B] flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-colors",
                     ticket.status === "REVOKED_BY_ADMIN"
-                      ? "border-red-200 dark:border-red-900/40 bg-red-50/20 dark:bg-red-950/10"
-                      : "border-zinc-200 dark:border-zinc-800"
-                  }`}
+                      ? "border-rose-500/20 bg-rose-500/[0.02]"
+                      : "border-white/[0.08]",
+                  )}
                 >
                   <div className="space-y-2">
-                    <div className="flex items-center gap-2 font-bold text-lg text-indigo-600 dark:text-indigo-400">
-                      <MapPin className="h-5 w-5" />{" "}
+                    <div className="flex items-center gap-2 font-semibold text-[#F5F5F7]">
+                      <MapPin className="h-4 w-4 text-[#8B5CF6]" />{" "}
                       {ticket.trip?.route || "Chuyến xe khách"}
                     </div>
-                    <div className="text-sm text-zinc-500 flex items-center gap-4">
+                    <div className="text-sm text-[#92929F] flex items-center gap-4">
                       <span className="flex items-center gap-1">
                         <Calendar className="h-4 w-4" />{" "}
                         {formatDate(ticket.trip?.departureAt)}
                       </span>
-                      <span className="font-bold text-zinc-900 dark:text-zinc-100">
+                      <span className="font-medium text-[#F5F5F7]">
                         Ghế: A{ticket.seatNumber}
                       </span>
                     </div>
-
-                    {/* 🎯 HIỂN THỊ TRẠNG THÁI VÉ MỚI (Bổ sung REVOKED_BY_ADMIN) */}
-                    <div className="text-xs font-semibold">
+                    <div className="text-xs font-medium">
                       Trạng thái:{" "}
                       <span
-                        className={
+                        className={cn(
                           ticket.status === "CONFIRMED"
-                            ? "text-emerald-500 font-bold"
+                            ? "text-emerald-400"
                             : ticket.status === "CANCELED"
-                              ? "text-amber-500 font-bold"
+                              ? "text-amber-400"
                               : ticket.status === "REVOKED_BY_ADMIN"
-                                ? "text-red-500 font-bold"
-                                : "text-zinc-500 font-bold"
-                        }
+                                ? "text-rose-400"
+                                : "text-[#92929F]",
+                        )}
                       >
                         {ticket.status === "CONFIRMED"
                           ? "Đã thanh toán"
                           : ticket.status === "CANCELED"
-                            ? "Đã hủy vé (Hoàn tiền)"
+                            ? "Đã hủy vé"
                             : ticket.status === "REVOKED_BY_ADMIN"
-                              ? "Đã bị Admin thu hồi"
+                              ? "Bị thu hồi"
                               : ticket.status}
                       </span>
                     </div>
                   </div>
 
-                  <div className="flex flex-col items-end gap-2 w-full md:w-auto">
-                    <div className="text-xl font-bold text-indigo-600 dark:text-indigo-400">
+                  <div className="flex flex-col items-end gap-3 w-full md:w-auto">
+                    <div className="text-lg font-semibold text-[#8B5CF6]">
                       {formatCurrency(ticket.trip?.price)}
                     </div>
-
-                    {/* 🎯 LOGIC NÚT HỦY VÉ HOẶC THÔNG BÁO VÉ THU HỒI */}
                     {canCancel ? (
                       <Button
                         variant="outline"
-                        className="text-red-500 border-red-200 hover:bg-red-50 h-9 text-xs"
+                        className="text-rose-400 border-rose-500/20 hover:bg-rose-500/10 h-9 text-xs"
                         isLoading={cancelMutation.isPending}
                         onClick={() => {
                           if (
                             confirm(
-                              `Bạn chắc chắn muốn hủy vé ghế A${ticket.seatNumber}? Hệ thống sẽ hoàn tiền 100% vào Ví.`,
+                              `Hủy vé ghế A${ticket.seatNumber}? Hoàn tiền 100%.`,
                             )
-                          ) {
+                          )
                             cancelMutation.mutate(ticket.id);
-                          }
                         }}
                       >
-                        <XCircle className="h-4 w-4 mr-1" /> Hủy vé & Hoàn tiền
+                        <XCircle className="h-4 w-4 mr-1" /> Hủy vé
                       </Button>
                     ) : ticket.status === "CONFIRMED" ? (
-                      <span className="text-xs text-zinc-400 font-medium italic bg-zinc-100 dark:bg-zinc-900 px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800">
-                        Quá hạn hủy vé (&lt; 1h trước khởi hành)
-                      </span>
-                    ) : ticket.status === "REVOKED_BY_ADMIN" ? (
-                      <span className="text-xs text-red-500 font-medium italic bg-red-100/50 dark:bg-red-950/30 px-3 py-1.5 rounded-lg border border-red-200 dark:border-red-900/40">
-                        Vé đã bị thu hồi bởi Quản trị viên
+                      <span className="text-xs text-[#92929F] italic bg-[#0D0D10] px-3 py-1.5 rounded-lg border border-white/[0.04]">
+                        Quá hạn hủy vé
                       </span>
                     ) : null}
                   </div>
