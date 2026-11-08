@@ -10,13 +10,39 @@ datasource db {
 model Users {
   id        Int       @id @default(autoincrement())
   email     String    @unique
-  password  String
+  
+  // Cho phép null vì user có thể chỉ đăng nhập bằng Passkeys
+  password  String?   
+  
   fullName  String
   role      Role      @default(CUSTOMER)
   createdAt DateTime  @default(now())
   avatarUrl String?   @db.Text
-  tickets   Tickets[]
-  wallet    Wallets?
+  
+  // THÊM MỚI: Dành cho bảo mật & Passkeys
+  phoneNumber      String?   @db.Text // Sẽ được mã hóa AES-256-GCM (ALE)
+  currentChallenge String?   // Lưu thử thách (challenge) tạm thời của WebAuthn
+  
+  tickets     Tickets[]
+  wallet      Wallets?
+  credentials WebAuthnCredential[] // Liên kết với bảng Passkeys
+
+  @@index([email])
+}
+
+// THÊM MỚI: Bảng lưu trữ Passkey (WebAuthn)
+model WebAuthnCredential {
+  id           String   @id @default(uuid())
+  userId       Int
+  credentialID String   @unique @db.Text // ID của Passkey (Base64URL)
+  publicKey    String   @db.Text         // Khóa công khai (Base64URL)
+  counter      Int      @default(0)      // Chống Replay Attack
+  transports   String?                   // "usb", "nfc", "ble", "internal"
+  createdAt    DateTime @default(now())
+
+  user         Users    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model Wallets {
@@ -50,7 +76,6 @@ model Tickets {
   status        TicketStatus @default(PENDING)
   createdAt     DateTime     @default(now())
 
-  // ✅ THÊM MỚI — phục vụ hoàn tiền đúng số
   paymentMethod String?      // "WALLET" | "LATER" | "GIFT" | "ADMIN_GRANT" | "LEGACY"
   paidAmount    Decimal?     @db.Decimal(12, 2)
 
@@ -90,9 +115,8 @@ enum TicketStatus {
   EXPIRED
   CONFIRMED
   USED
-  CANCELED          // giữ (code đang dùng)
+  CANCELED
   REVOKED_BY_ADMIN
-  // CANCELLED        bỏ (trùng CANCELED)
 }
 
 model AuditLog {
