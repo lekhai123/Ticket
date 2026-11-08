@@ -1,6 +1,5 @@
 {
   "version": 2,
-  "regions": ["sin1"],
   "builds": [
     {
       "src": "api/index.ts",
@@ -21,7 +20,7 @@
     },
     {
       "source": "/(.*)",
-      "destination": "/frontend/dist/index.html"
+      "destination": "/index.html"
     }
   ]
 }
