@@ -18,6 +18,7 @@ model Users {
   role      Role      @default(CUSTOMER)
   createdAt DateTime  @default(now())
   avatarUrl String?   @db.Text
+  payments  PaymentTransaction[]
   
   // THÊM MỚI: Dành cho bảo mật & Passkeys
   phoneNumber      String?   @db.Text // Sẽ được mã hóa AES-256-GCM (ALE)
@@ -146,4 +147,20 @@ model BlacklistedIPs {
   isResolved Boolean  @default(false)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+}
+model PaymentTransaction {
+  id            String   @id @default(uuid())
+  orderCode     Int      @unique // Mã đơn hàng gửi sang PayOS
+  userId        Int
+  amount        Decimal  @db.Decimal(12, 2)
+  status        String   @default("PENDING") // PENDING, SUCCESS, FAILED, EXPIRED
+  provider      String   @default("PAYOS")
+  checkoutUrl   String?
+  paymentLinkId String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user          Users    @relation(fields: [userId], references: [id])
+
+  @@index([userId, status])
 }
