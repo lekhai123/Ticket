@@ -12,4 +12,4 @@ COPY . .
 RUN npm run build
 
 # Sửa đường dẫn ở đây (thêm /queues/)
-CMD ["node", "dist-api/queues/mailWorker.js"]
+CMD ["node", "dist-api/queues/mailWorker.mjs"]
