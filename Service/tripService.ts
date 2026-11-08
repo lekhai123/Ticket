@@ -273,17 +273,16 @@ export class TripService {
     const safePrompt = typeof prompt === "string" ? prompt : "";
     const cleanPrompt = safePrompt.trim().toLowerCase();
 
-    // Không nhập gì / xem hết
+    // 1. Không nhập gì hoặc yêu cầu xem hết -> Trả về toàn bộ (hợp lý)
     if (
       !cleanPrompt ||
       cleanPrompt.includes("tất cả") ||
-      cleanPrompt.includes("danh sách") ||
-      cleanPrompt.includes("mặc định")
+      cleanPrompt.includes("danh sách")
     ) {
       return await this.getAllTripsLogic();
     }
 
-    // Ưu tiên tìm chính xác theo text
+    // 2. Tìm kiếm chính xác / gần đúng theo Text (ILIKE) trước
     const keywordTrips = await prisma.trips.findMany({
       where: {
         departureAt: { gt: new Date() },
@@ -306,11 +305,12 @@ export class TripService {
       return keywordTrips.map((trip) => this.formatTripWithSeats(trip));
     }
 
-    // Fallback: semantic search với pgvector
+    // 3. Nếu không khớp text -> Dùng Semantic Search (AI)
     const queryVector = await this.getEmbedding(cleanPrompt);
     const vectorString = `[${queryVector.join(",")}]`;
 
-    const SIMILARITY_THRESHOLD = 0.7;
+    // ✅ SỬA: Tăng ngưỡng lên 0.85 để AI cực kỳ khắt khe, tránh trả về rác
+    const SIMILARITY_THRESHOLD = 0.85;
 
     const trips: any[] = await prisma.$queryRaw`
       SELECT id, route, "departureAt", price, "totalSeats", description,
@@ -322,8 +322,12 @@ export class TripService {
       LIMIT ${limit};
     `;
 
-    if (!trips || trips.length === 0) return [];
+    // ✅ SỬA: Nếu AI không tìm thấy thì trả về mảng rỗng [], không hiển thị bừa
+    if (!trips || trips.length === 0) {
+      return [];
+    }
 
+    // Bổ sung số ghế thực tế
     const tripIds = trips.map((t) => t.id);
     const activeTickets = await prisma.tickets.findMany({
       where: {

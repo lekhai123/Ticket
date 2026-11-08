@@ -1,40 +1,63 @@
-import React from "react";
+import React, { Suspense, lazy } from "react";
 import { createBrowserRouter, Navigate } from "react-router-dom";
 
-// Layouts
+// Layouts (Giữ nguyên import tĩnh vì đây là khung viền, load ngay lập tức)
 import AuthLayout from "../layouts/AuthLayout";
 import CustomerLayout from "../layouts/CustomerLayout";
 import AdminLayout from "../layouts/AdminLayout";
 
+// Component hiển thị khi đang tải (Loading)
+const LoadingFallback = () => (
+  <div className="h-[60vh] w-full flex items-center justify-center bg-transparent">
+    <div className="animate-spin h-8 w-8 border-4 border-[#8B5CF6] border-t-transparent rounded-full" />
+  </div>
+);
+
+// CHUYỂN SANG LAZY IMPORTS (Chỉ tải khi user click vào)
 // Auth Pages
-import Login from "../pages/auth/Login";
-import Register from "../pages/auth/Register";
-import ResetPassword from "../pages/auth/ResetPassword";
+const Login = lazy(() => import("../pages/auth/Login"));
+const Register = lazy(() => import("../pages/auth/Register"));
+const ResetPassword = lazy(() => import("../pages/auth/ResetPassword"));
 
 // Customer Pages
-import SearchTrip from "../pages/customer/SearchTrip";
-import Booking from "../pages/customer/Booking";
-import Wallet from "../pages/customer/Wallet";
-import Profile from "../pages/customer/Profile";
+const SearchTrip = lazy(() => import("../pages/customer/SearchTrip"));
+const Booking = lazy(() => import("../pages/customer/Booking"));
+const Wallet = lazy(() => import("../pages/customer/Wallet"));
+const Profile = lazy(() => import("../pages/customer/Profile"));
 
 // Admin Pages
-import Dashboard from "../pages/admin/Dashboard";
-import Users from "../pages/admin/User";
-import MassGift from "../pages/admin/MassGift";
-import AuditLog from "../pages/admin/AuditLog";
-import Revoke from "../pages/admin/Revoke";
-import Health from "../pages/admin/Health";
-import { FinancialReconciliation } from "../pages/admin/FinancialReconciliation";
-import TripManagement from "../pages/admin/TripManagement";
+const Dashboard = lazy(() => import("../pages/admin/Dashboard"));
+const Users = lazy(() => import("../pages/admin/User"));
+const MassGift = lazy(() => import("../pages/admin/MassGift"));
+const AuditLog = lazy(() => import("../pages/admin/AuditLog"));
+const Revoke = lazy(() => import("../pages/admin/Revoke"));
+const Health = lazy(() => import("../pages/admin/Health"));
+const TripManagement = lazy(() => import("../pages/admin/TripManagement"));
+
+// Lưu ý: File FinancialReconciliation của bạn đang dùng Named Export (export const)
+// nên cần nội suy lại thành Default Export để React.lazy hiểu.
+const FinancialReconciliation = lazy(() =>
+  import("../pages/admin/FinancialReconciliation").then((module) => ({
+    default: module.FinancialReconciliation,
+  })),
+);
+
+// HÀM BỌC SUSPENSE: Giúp Sidebar/Navbar không bị ẩn khi trang con đang tải
+const withSuspense = (Component: React.ComponentType) => (
+  <Suspense fallback={<LoadingFallback />}>
+    <Component />
+  </Suspense>
+);
+
 export const router = createBrowserRouter([
   // 1. AUTH ROUTES
   {
     path: "/auth",
     element: <AuthLayout />,
     children: [
-      { path: "login", element: <Login /> },
-      { path: "register", element: <Register /> },
-      { path: "forgot-password", element: <ResetPassword /> },
+      { path: "login", element: withSuspense(Login) },
+      { path: "register", element: withSuspense(Register) },
+      { path: "forgot-password", element: withSuspense(ResetPassword) },
       { path: "", element: <Navigate to="/auth/login" replace /> },
     ],
   },
@@ -44,10 +67,10 @@ export const router = createBrowserRouter([
     path: "/",
     element: <CustomerLayout />,
     children: [
-      { index: true, element: <SearchTrip /> },
-      { path: "booking/:id", element: <Booking /> },
-      { path: "customer/wallet", element: <Wallet /> },
-      { path: "customer/profile", element: <Profile /> },
+      { index: true, element: withSuspense(SearchTrip) },
+      { path: "booking/:id", element: withSuspense(Booking) },
+      { path: "customer/wallet", element: withSuspense(Wallet) },
+      { path: "customer/profile", element: withSuspense(Profile) },
     ],
   },
 
@@ -56,17 +79,18 @@ export const router = createBrowserRouter([
     path: "/admin",
     element: <AdminLayout />,
     children: [
-      // Mặc định truy cập /admin sẽ redirect về /admin/dashboard
       { index: true, element: <Navigate to="/admin/dashboard" replace /> },
-      { path: "dashboard", element: <Dashboard /> },
-      { path: "users", element: <Users /> },
-      { path: "mass-gift", element: <MassGift /> },
-      // 🎯 Đã sửa từ "audit-log" -> "audit-logs" khớp với AdminLayout
-      { path: "audit-logs", element: <AuditLog /> },
-      { path: "revoke", element: <Revoke /> },
-      { path: "health", element: <Health /> },
-      { path: "reconciliation", element: <FinancialReconciliation /> },
-      { path: "trips", element: <TripManagement /> },
+      { path: "dashboard", element: withSuspense(Dashboard) },
+      { path: "users", element: withSuspense(Users) },
+      { path: "mass-gift", element: withSuspense(MassGift) },
+      { path: "audit-logs", element: withSuspense(AuditLog) },
+      { path: "revoke", element: withSuspense(Revoke) },
+      { path: "health", element: withSuspense(Health) },
+      {
+        path: "reconciliation",
+        element: withSuspense(FinancialReconciliation),
+      },
+      { path: "trips", element: withSuspense(TripManagement) },
     ],
   },
 
@@ -74,14 +98,14 @@ export const router = createBrowserRouter([
   {
     path: "*",
     element: (
-      <div className="flex h-screen flex-col items-center justify-center bg-zinc-950 text-white">
-        <h1 className="text-6xl font-bold text-indigo-500">404</h1>
-        <p className="mt-4 text-lg text-zinc-400">
+      <div className="flex h-screen flex-col items-center justify-center bg-[#0D0D10] text-white">
+        <h1 className="text-6xl font-bold text-[#8B5CF6]">404</h1>
+        <p className="mt-4 text-lg text-[#92929F]">
           Trang bạn tìm kiếm không tồn tại.
         </p>
         <a
           href="/"
-          className="mt-6 rounded-xl bg-zinc-800 px-6 py-2.5 text-sm font-medium hover:bg-zinc-700"
+          className="mt-6 rounded-xl bg-white/[0.08] px-6 py-2.5 text-sm font-medium hover:bg-white/[0.15] transition-colors"
         >
           Về trang chủ
         </a>
