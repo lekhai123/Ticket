@@ -31,8 +31,7 @@ export class BookingService {
         async (tx) => {
           // Advisory lock theo ghế — bảo vệ khi Redis lock hết hạn/Redis down.
           // Tự động nhả khi transaction commit hoặc rollback.
-          await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`seat:${tripId}:${seatNumber}`}))`;
-
+          await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`seat:${tripId}:${seatNumber}`}))::text`;
           // Check ghế — chạy trong transaction (an toàn với race condition)
           const existingTicket = await tx.tickets.findFirst({
             where: {
