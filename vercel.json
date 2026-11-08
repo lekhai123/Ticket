@@ -2,7 +2,7 @@
   "version": 2,
   "daemons": {
     "bullmq-worker": {
-      "root": "worker/",
+      "root": ".",
       "entrypoint": "worker/Dockerfile",
       "command": ["node", "dist/queues/mailQueue.js"],
       "instances": {
