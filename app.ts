@@ -13,6 +13,7 @@ import walletRoutes from "./Router/walletRoutes";
 import adminRoutes from "./Router/adminRoutes";
 import authRoutes from "./Router/authRoutes";
 import bookingRoutes from "./Router/bookingRoutes";
+import paymentRoutes from "./Router/paymentRoutes";
 
 const app = express();
 
@@ -60,6 +61,7 @@ app.use("/api/wallets", walletRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/bookings", bookingRoutes);
+app.use("/api/payments", paymentRoutes);
 
 // Middleware xử lý lỗi tập trung (phải đặt cuối cùng)
 app.use(globalErrorHandler);
