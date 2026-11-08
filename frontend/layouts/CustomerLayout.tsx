@@ -1,5 +1,5 @@
 import { Outlet, Link } from "react-router-dom";
-import { BusFront, User, Wallet } from "lucide-react";
+import { BusFront, User, Wallet, AlertTriangle } from "lucide-react";
 import { useAuthStore } from "../store/authStore";
 import { useWallet } from "../hooks/useWallet";
 import { formatCurrency } from "../utils/format";
@@ -16,7 +16,7 @@ export default function CustomerLayout() {
   const avatarUrl = user?.avatarUrl;
 
   return (
-    <div className="min-h-screen bg-[#0D0D10] text-[#F5F5F7] font-sans selection:bg-[#8B5CF6]/30">
+    <div className="min-h-screen bg-[#0D0D10] text-[#F5F5F7] font-sans selection:bg-[#8B5CF6]/30 flex flex-col">
       {/* Floating Navbar */}
       <header className="sticky top-0 z-50 flex h-16 w-full items-center justify-between border-b border-white/[0.08] bg-[#0D0D10]/80 px-6 backdrop-blur-md">
         <Link
@@ -72,7 +72,21 @@ export default function CustomerLayout() {
         </nav>
       </header>
 
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 animate-in fade-in duration-300">
+      {/* ✅ BANNER CẢNH BÁO NGHIÊN CỨU & SĐT LIÊN HỆ */}
+      <div className="w-full bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 flex flex-col sm:flex-row items-center justify-center gap-2 text-amber-400 text-sm font-medium z-40 text-center">
+        <div className="flex items-center gap-2">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <span>
+            Hệ thống đang trong quá trình nghiên cứu (Test). Nếu bạn lỡ phát
+            sinh giao dịch chuyển tiền thật, vui lòng liên hệ ngay:
+          </span>
+        </div>
+        <span className="font-bold text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded">
+          0363.489.863
+        </span>
+      </div>
+
+      <main className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8 animate-in fade-in duration-300 flex-1">
         <Outlet />
       </main>
     </div>
