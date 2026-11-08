@@ -5,10 +5,12 @@ import {
   ArrowDownToLine,
   ArrowUpFromLine,
   Loader2,
+  CreditCard,
 } from "lucide-react";
 import { useAuthStore } from "../../store/authStore";
 import { useWallet } from "../../hooks/useWallet";
 import { walletApi } from "../../api/wallet.api";
+import axiosClient from "../../api/axiosClient"; // ✅ Thêm import
 import { formatCurrency, formatDate } from "../../utils/format";
 import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
@@ -20,6 +22,7 @@ export default function Wallet() {
     user?.id || 0,
   );
   const [topUpAmount, setTopUpAmount] = useState("");
+  const [isCreatingPayOS, setIsCreatingPayOS] = useState(false); // ✅ State cho PayOS
 
   const { data: txData, isLoading: isTxLoading } = useQuery({
     queryKey: ["wallet", "transactions", user?.id],
@@ -30,6 +33,7 @@ export default function Wallet() {
 
   const transactionList = txData?.transactions || txData || [];
 
+  // Nạp tiền thủ công (Code cũ)
   const handleTopUp = async (e: React.FormEvent) => {
     e.preventDefault();
     const amount = Number(topUpAmount);
@@ -39,6 +43,27 @@ export default function Wallet() {
       setTopUpAmount("");
     } catch (err: any) {
       alert(err.message || "Nạp tiền thất bại");
+    }
+  };
+
+  // ✅ Nạp tiền qua PayOS
+  const handlePayOS = async () => {
+    const amount = Number(topUpAmount);
+    if (!amount || amount < 10000) {
+      return alert("Số tiền tối thiểu là 10,000đ");
+    }
+
+    setIsCreatingPayOS(true);
+    try {
+      const res = await axiosClient.post("/payments/create", { amount });
+      if (res.data?.checkoutUrl) {
+        // Chuyển hướng sang trang thanh toán của PayOS
+        window.location.href = res.data.checkoutUrl;
+      }
+    } catch (err: any) {
+      alert(err.message || "Không thể tạo mã thanh toán PayOS");
+    } finally {
+      setIsCreatingPayOS(false);
     }
   };
 
@@ -124,7 +149,6 @@ export default function Wallet() {
             <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-[#8B5CF6]/20 blur-3xl" />
             <div className="relative z-10 flex h-full flex-col justify-between">
               <div className="flex items-center justify-between">
-                {/* SỬA DÒNG 128 TẠI ĐÂY: Bỏ user?.name */}
                 <span className="text-sm font-medium text-[#92929F] uppercase tracking-wider">
                   {user?.fullName}
                 </span>
@@ -145,11 +169,8 @@ export default function Wallet() {
             </div>
           </div>
 
-          <form
-            onSubmit={handleTopUp}
-            className="rounded-2xl border border-white/[0.08] bg-[#15151B] p-6"
-          >
-            <h3 className="font-medium text-[#F5F5F7] mb-4">Nạp tiền nhanh</h3>
+          <div className="rounded-2xl border border-white/[0.08] bg-[#15151B] p-6">
+            <h3 className="font-medium text-[#F5F5F7] mb-4">Nạp tiền</h3>
             <Input
               type="number"
               placeholder="Nhập số tiền (VNĐ)..."
@@ -157,14 +178,30 @@ export default function Wallet() {
               onChange={(e) => setTopUpAmount(e.target.value)}
               className="mb-4 bg-[#0D0D10] border-white/[0.08] text-[#F5F5F7]"
             />
-            <Button
-              type="submit"
-              className="w-full bg-[#8B5CF6] hover:bg-[#7C3AED] text-white"
-              isLoading={isToppingUp}
-            >
-              Xác nhận nạp
-            </Button>
-          </form>
+
+            <div className="flex flex-col gap-3">
+              {/* ✅ NÚT NẠP QUA PAYOS */}
+              <Button
+                type="button"
+                onClick={handlePayOS}
+                isLoading={isCreatingPayOS}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center gap-2"
+              >
+                <CreditCard className="h-4 w-4" />
+                Thanh toán qua PayOS
+              </Button>
+
+              {/* Nút nạp thủ công (Cũ) */}
+              <Button
+                type="button"
+                onClick={handleTopUp}
+                isLoading={isToppingUp}
+                className="w-full bg-[#8B5CF6] hover:bg-[#7C3AED] text-white"
+              >
+                Xác nhận nạp (Thủ công)
+              </Button>
+            </div>
+          </div>
         </div>
 
         {/* Lịch sử */}
