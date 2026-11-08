@@ -6,6 +6,8 @@ import { Link, useNavigate, useLocation } from "react-router-dom";
 import { Input } from "../../components/ui/Input";
 import { Button } from "../../components/ui/Button";
 import { useAuth } from "../../hooks/useAuth";
+import { usePasskey } from "../../hooks/usePasskey";
+import { Fingerprint } from "lucide-react"; //Thêm icon
 
 const loginSchema = z.object({
   email: z.string().email("Email không đúng định dạng"),
@@ -17,6 +19,7 @@ type LoginForm = z.infer<typeof loginSchema>;
 
 export default function Login() {
   const { login, isLoggingIn } = useAuth();
+  const { loginWithPasskey } = usePasskey(); // Khởi tạo hook
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -24,11 +27,14 @@ export default function Login() {
     register,
     handleSubmit,
     setError,
+    watch, // ✅ Thêm watch để lấy email
     formState: { errors },
   } = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
     defaultValues: { email: "", password: "", rememberMe: false },
   });
+
+  const emailValue = watch("email"); //Theo dõi giá trị email
 
   const onSubmit = async (data: LoginForm) => {
     try {
@@ -48,6 +54,22 @@ export default function Login() {
       });
     } catch (err: any) {
       setError("root", { message: err?.message ?? "Sai email hoặc mật khẩu." });
+    }
+  };
+
+  //Hàm xử lý đăng nhập bằng Passkey
+  const handlePasskeyLogin = async () => {
+    if (!emailValue) {
+      return alert(
+        "Vui lòng nhập Email trước khi đăng nhập bằng Vân tay/FaceID!",
+      );
+    }
+    const res = await loginWithPasskey(emailValue);
+    if (res.success) {
+      const from = (location.state as any)?.from?.pathname;
+      navigate(from || "/", { replace: true });
+    } else {
+      alert("❌ " + res.message);
     }
   };
 
@@ -119,6 +141,27 @@ export default function Login() {
           isLoading={isLoggingIn}
         >
           Đăng nhập
+        </Button>
+
+        {/* NÚT ĐĂNG NHẬP BẰNG PASSKEY */}
+        <div className="relative py-2">
+          <div className="absolute inset-0 flex items-center">
+            <span className="w-full border-t border-white/[0.08]" />
+          </div>
+          <div className="relative flex justify-center text-xs uppercase">
+            <span className="bg-[#0D0D10] px-2 text-[#92929F]">
+              Hoặc tiếp tục với
+            </span>
+          </div>
+        </div>
+
+        <Button
+          type="button"
+          onClick={handlePasskeyLogin}
+          className="w-full bg-[#15151B] border border-white/[0.08] text-[#F5F5F7] hover:bg-white/[0.04]"
+        >
+          <Fingerprint className="mr-2 h-5 w-5 text-[#8B5CF6]" />
+          Đăng nhập bằng Vân tay / FaceID
         </Button>
       </form>
 

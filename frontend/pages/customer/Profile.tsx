@@ -7,6 +7,7 @@ import { Button } from "../../components/ui/Button";
 import { VipBadge } from "../../components/common/VipBadge";
 import { formatCurrency, formatDate } from "../../utils/format";
 import { useUser } from "../../hooks/useUser";
+import { usePasskey } from "../../hooks/usePasskey"; // ✅ Thêm import
 import {
   Mail,
   Shield,
@@ -18,6 +19,7 @@ import {
   XCircle,
   Camera,
   Loader2,
+  Fingerprint,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { cn } from "../../utils/cn";
@@ -30,6 +32,7 @@ export default function Profile() {
 
   const [activeTab, setActiveTab] = useState<"info" | "tickets">("info");
   const { updateAvatar, isUploadingAvatar } = useUser();
+  const { registerPasskey } = usePasskey();
 
   const { data: ticketsResponse, isLoading: isLoadingTickets } = useQuery({
     queryKey: ["my-tickets", user?.id],
@@ -65,6 +68,16 @@ export default function Profile() {
       await updateAvatar(file);
     } catch (error) {
       console.error(error);
+    }
+  };
+
+  // Hàm xử lý cài đặt Passkey
+  const handleRegisterPasskey = async () => {
+    const res = await registerPasskey();
+    if (res.success) {
+      alert("✅ " + res.message);
+    } else {
+      alert("❌ " + res.message);
     }
   };
 
@@ -176,13 +189,21 @@ export default function Profile() {
             </div>
           </div>
 
-          <div className="mt-10 pt-6 border-t border-white/[0.08]">
+          {/* ✅ KHU VỰC BẢO MẬT NÂNG CAO */}
+          <div className="mt-10 pt-6 border-t border-white/[0.08] flex flex-col sm:flex-row gap-4 items-start sm:items-center">
             <Button
               variant="outline"
               onClick={handleLogout}
-              className="text-rose-400 border-rose-500/20 hover:bg-rose-500/10 hover:text-rose-300"
+              className="text-rose-400 border-rose-500/20 hover:bg-rose-500/10 hover:text-rose-300 w-full sm:w-auto"
             >
               <LogOut className="mr-2 h-4 w-4" /> Đăng xuất
+            </Button>
+
+            <Button
+              onClick={handleRegisterPasskey}
+              className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 w-full sm:w-auto"
+            >
+              <Fingerprint className="mr-2 h-5 w-5" /> Cài đặt Vân tay / FaceID
             </Button>
           </div>
         </div>
