@@ -154,16 +154,14 @@ npm run test
 Hệ thống đã được kiểm thử tự động với kết quả **100% Pass (5/5 tests)**. Dưới đây là kết quả độ phủ mã nguồn của các module quan trọng:
 
 | Tên Module                    | Statements (Câu lệnh) | Branches (Nhánh) | Functions (Hàm) | Lines (Dòng) |
-| :---------------------------- | --------------------- | ---------------- | --------------- | ------------ | --- |
-| **Utils/payos.ts**            | 96.96%                | 28.57%           | 100%            | 96.96%       |
-| **Service/bookingService.ts** | 80.39%                | 70%              | 58.33%          | 80.39%       |     |
-| **Service/authService.ts**    | 65.71%                | 50%              | 80%             | 69.69%       |     |
-| **Utils/redisLock.ts**        | 64.28%                | 0%               | 0%              | 64.28%       |     |
-| **Tổng quan dự án**           | **30.66%**            | **12.56%**       | **17.45%**      | **31.18%**   |
+| :---------------------------- | :-------------------: | :--------------: | :-------------: | :----------: |
+| **Utils/payos.ts**            |        96.96%         |      28.57%      |      100%       |    96.96%    |
+| **Service/bookingService.ts** |        80.39%         |       70%        |     58.33%      |    80.39%    |
+| **Service/authService.ts**    |        65.71%         |       50%        |       80%       |    69.69%    |
+| **Utils/redisLock.ts**        |        64.28%         |        0%        |       0%        |    64.28%    |
+| **Tổng quan dự án**           |      **30.66%**       |    **12.56%**    |   **17.45%**    |  **31.18%**  |
 
-_(Ghi chú: Độ phủ tổng quan 30.66% là do hệ thống có rất nhiều file UI, Service phụ trợ và Job chưa được đưa vào diện test trong đồ án này. Các module cốt lõi về Bảo mật và Giao dịch đều đạt độ phủ >80%)._
-
----
+## _(Ghi chú: Độ phủ tổng quan 30.66% là do hệ thống có rất nhiều file UI, Service phụ trợ và Job chưa được đưa vào diện test trong đồ án này. Các module cốt lõi về Bảo mật và Giao dịch đều đạt độ phủ >80%)._
 
 ## 📂 5. Cấu Trúc Thư Mục Dự Án
 
