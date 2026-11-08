@@ -1,0 +1,1 @@
+import{e}from"./index-bUZi1ArA.js";const a={createBooking:async t=>(await e.post("/bookings",t)).data,getMyTickets:async()=>(await e.get("/bookings/my-tickets")).data,cancelBooking:async t=>(await e.delete(`/bookings/${t}`)).data};export{a as b};
