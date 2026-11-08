@@ -1,6 +1,5 @@
 {
   "version": 2,
-  "regions": ["sin1"],
   "builds": [
     {
       "src": "api/index.ts",
