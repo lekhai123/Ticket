@@ -1,18 +1,15 @@
-# Sử dụng image Node.js chính thức
 FROM node:20-alpine
-
-# Đặt thư mục làm việc
 WORKDIR /app
 
-# Copy package.json và cài đặt dependencies
+# Copy package.json và cài dependencies
 COPY package*.json ./
-RUN npm ci --omit=dev
+RUN npm ci
 
-# Copy toàn bộ source code
+# Copy toàn bộ source code (nhờ .dockerignore đã chặn frontend)
 COPY . .
 
-# Build code TypeScript (nếu cần)
+# Chạy lệnh build (script "build" ta vừa thêm ở Bước 1)
 RUN npm run build
 
-# Lệnh để khởi chạy worker
-CMD ["node", "dist/queues/mailQueue.ts"]
+# Chạy worker từ file đã build trong thư mục dist-api
+CMD ["node", "dist-api/queues/mailQueue.ts"]
