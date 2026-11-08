@@ -1,5 +1,15 @@
 {
   "version": 2,
+  "daemons": {
+    "bullmq-worker": {
+      "root": "worker/",
+      "entrypoint": "Dockerfile",
+      "command": ["node", "dist/queues/mailQueue.js"],
+      "instances": {
+        "sin1": 1
+      }
+    }
+  },
   "buildCommand": "cd frontend && npm install && npm run build",
   "outputDirectory": "frontend/dist",
   "rewrites": [
