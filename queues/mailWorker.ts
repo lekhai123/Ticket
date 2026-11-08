@@ -1,16 +1,18 @@
-// queues/mailWorker.ts
 import { Worker, Job } from "bullmq";
 import Redis from "ioredis";
 import { sendOtpEmail } from "../config/resend";
 import { MailJobData } from "./mailQueue";
 
-const redisConnection = new Redis(
-  process.env.REDIS_URL || "redis://localhost:6379",
-  {
-    maxRetriesPerRequest: null,
-    enableReadyCheck: false,
-  },
-);
+const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
+
+const redisConnection = new Redis(redisUrl, {
+  maxRetriesPerRequest: null,
+  enableReadyCheck: false, // Quan trọng với Upstash
+  keepAlive: 10000, // ✅ Giữ kết nối sống
+  tls: redisUrl.startsWith("rediss://")
+    ? { rejectUnauthorized: false }
+    : undefined, // ✅ Hỗ trợ Upstash TLS
+});
 
 export const mailWorker = new Worker<MailJobData>(
   "mail-queue",
@@ -34,8 +36,9 @@ mailWorker.on("completed", (job) =>
 mailWorker.on("failed", (job, err) =>
   console.error(`[QUEUE FAILED] Job ${job?.id} lỗi: ${err.message}`),
 );
-mailWorker.on("error", (err) =>
-  console.error("[QUEUE WORKER ERROR]:", err.message),
-);
+mailWorker.on("error", (err) => {
+  // Chỉ log lỗi, không làm sập worker
+  console.error("[QUEUE WORKER ERROR]:", err.message);
+});
 
 console.log("🚀 Mail Worker đã khởi động và đang chờ Job...");

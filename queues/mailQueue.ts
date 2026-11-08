@@ -1,13 +1,16 @@
-// queues/mailQueue.ts
 import { Queue } from "bullmq";
 import Redis from "ioredis";
 
-const redisConnection = new Redis(
-  process.env.REDIS_URL || "redis://localhost:6379",
-  {
-    maxRetriesPerRequest: null,
-  },
-);
+const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
+
+const redisConnection = new Redis(redisUrl, {
+  maxRetriesPerRequest: null,
+  enableReadyCheck: false, // Quan trọng với Upstash
+  keepAlive: 10000, // ✅ Giữ kết nối sống
+  tls: redisUrl.startsWith("rediss://")
+    ? { rejectUnauthorized: false }
+    : undefined, // ✅ Hỗ trợ Upstash TLS
+});
 
 export interface MailJobData {
   email: string;
