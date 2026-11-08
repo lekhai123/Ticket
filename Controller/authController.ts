@@ -2,13 +2,16 @@ import type { Request, Response } from "express";
 import { AuthService } from "../Service/authService";
 import { RevocationService } from "../Service/revocationService";
 
+const isProduction =
+  process.env.NODE_ENV === "production" || process.env.VERCEL === "1";
+
 // Cấu hình chung cho Cookie chứa Refresh Token
 const REFRESH_COOKIE_OPTS = {
-  httpOnly: true, // Chống XSS
-  secure: process.env.NODE_ENV === "production",
-  sameSite: "lax" as const,
-  maxAge: 7 * 24 * 60 * 60 * 1000, // 7 ngày
-  path: "/api/auth", // Chỉ gửi cookie này đến các route auth
+  httpOnly: true,
+  secure: isProduction, // Bắt buộc true khi chạy HTTPS (Vercel)
+  sameSite: isProduction ? ("none" as const) : ("lax" as const), // 'none' an toàn nhất khi có thể có domain phụ
+  maxAge: 7 * 24 * 60 * 60 * 1000,
+  path: "/api/auth",
 };
 
 export class AuthController {
