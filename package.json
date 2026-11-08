@@ -8,8 +8,8 @@
     "test": "jest --runInBand",
     "dev:fe": "cd frontend && npm run dev",
     "setup": "npm install && cd frontend && npm install && cd .. && npx prisma generate && npx prisma migrate deploy",
-    "build": "tsup server.ts queues/mailQueue.ts --out-dir dist-api --format esm --no-splitting",
-    "build:be": "tsup server.ts queues/mailQueue.ts --out-dir dist-api --format esm --no-splitting",
+    "build": "tsup server.ts queues/mailWorker.ts --out-dir dist-api --format esm --no-splitting",
+    "build:be": "tsup server.ts queues/mailWorker.ts --out-dir dist-api --format esm --no-splitting",
     "vercel-build": "prisma generate && cd frontend && npm install && npm run build"
   },
   "dependencies": {

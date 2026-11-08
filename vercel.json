@@ -4,7 +4,7 @@
     "bullmq-worker": {
       "root": ".",
       "entrypoint": "worker/Dockerfile",
-      "command": ["node", "dist/queues/mailQueue.js"],
+      "command": ["node", "dist-api/mailWorker.js"],
       "instances": {
         "sin1": 1
       }
