@@ -324,7 +324,7 @@ export default function Profile() {
               })}
 
               {/* ✅ PHÂN TRANG VÉ */}
-              {meta.totalPages > 1 && (
+              {(meta?.totalPages || 1) > 1 && (
                 <div className="flex items-center justify-center gap-6 mt-8 pt-6 border-t border-white/[0.08]">
                   <button
                     onClick={() => {
@@ -346,7 +346,7 @@ export default function Profile() {
                       setTicketPage((p) => p + 1);
                       window.scrollTo({ top: 0, behavior: "smooth" });
                     }}
-                    disabled={ticketPage >= meta.totalPages}
+                    disabled={ticketPage >= (meta?.totalPages || 1)}
                     className="px-5 py-2.5 rounded-xl border border-white/[0.08] bg-[#15151B] text-sm font-medium text-[#F5F5F7] disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white/[0.04] transition-colors"
                   >
                     Trang sau
