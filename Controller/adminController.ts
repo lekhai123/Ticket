@@ -30,7 +30,6 @@ export class AdminController {
       .json({ success: true, data: result.data, meta: result.meta });
   });
   static getAIAlerts = catchAsync(async (req: Request, res: Response) => {
-    // Lấy 5 cảnh báo AI gần nhất
     const alerts = await prisma.auditLog.findMany({
       where: { action: "AI_ANOMALY_ALERT" },
       orderBy: { createdAt: "desc" },
@@ -42,20 +41,34 @@ export class AdminController {
     const result = await TicketService.scanAnomalies();
     res.status(200).json({ success: true, data: result });
   });
+
+  // FIX: truyền đủ 3 tham số (ticketId, adminUserId, reason)
   static revokeSingleTicket = catchAsync(
     async (req: Request, res: Response) => {
       const ticketId = Number(req.params.ticketId);
       const { reason } = req.body;
+      const adminUserId = (req as any).user?.id || (req as any).user?.userId;
 
-      if (!ticketId) {
+      if (!ticketId || isNaN(ticketId)) {
         return res
           .status(400)
           .json({ success: false, message: "Mã vé không hợp lệ!" });
       }
 
+      if (!adminUserId || isNaN(Number(adminUserId))) {
+        return res
+          .status(401)
+          .json({ success: false, message: "Không xác định được Admin!" });
+      }
+
+      const finalReason = reason
+        ? String(reason).trim()
+        : "Admin thu hồi vé lẻ";
+
       const result = await BookingService.adminRevokeTicket(
         ticketId,
-        reason || "Admin thu hồi vé lẻ",
+        Number(adminUserId),
+        finalReason,
       );
 
       res.status(200).json({
@@ -65,6 +78,7 @@ export class AdminController {
       });
     },
   );
+
   static getUsers = catchAsync(async (req: Request, res: Response) => {
     const page = req.query.page ? Number(req.query.page) : 1;
     const limit = req.query.limit ? Number(req.query.limit) : 10;
@@ -129,10 +143,8 @@ export class AdminController {
     });
   });
   static getPublicHealth = catchAsync(async (req: Request, res: Response) => {
-    // Dùng lại hàm getHealthStatus cũ
     const fullHealth = await AdminService.getHealthStatus();
 
-    // Rút gọn lại, chỉ trả về trạng thái cốt lõi để FE hiển thị (Không lộ thông tin nhạy cảm)
     const publicStatus = {
       database: fullHealth.database.status === "HEALTHY",
       redis: fullHealth.redis.primary.status === "HEALTHY",
@@ -143,7 +155,6 @@ export class AdminController {
     res.status(200).json({ success: true, data: publicStatus });
   });
 
-  // Mở khóa ví thủ công (Đã dời vào trong class)
   static unlockWallet = catchAsync(async (req: Request, res: Response) => {
     const { userId } = req.params;
 

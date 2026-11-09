@@ -8,6 +8,7 @@ import {
   ShieldCheck,
   XCircle,
   RefreshCcw,
+  Loader2,
 } from "lucide-react";
 import { formatCurrency, formatDate } from "../../utils/format";
 import { cn } from "../../utils/cn";
@@ -16,8 +17,8 @@ export default function TicketManagement() {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [searchText, setSearchText] = useState("");
+  const [revokingTicketId, setRevokingTicketId] = useState<number | null>(null);
 
-  // 1. Lấy danh sách vé
   const { data: response, isLoading } = useQuery({
     queryKey: ["admin-tickets", page, searchText],
     queryFn: () => adminApi.getTickets({ page, limit: 15, search: searchText }),
@@ -26,23 +27,26 @@ export default function TicketManagement() {
   const tickets = response?.data || [];
   const totalPages = response?.meta?.totalPages || 1;
 
-  // ✅ 2. Tự động lấy cảnh báo AI mới nhất (Không cần bấm nút)
-  const { data: alertResponse, isLoading: isAlertLoading } = useQuery({
+  const { data: alertResponse } = useQuery({
     queryKey: ["admin-ticket-alerts"],
     queryFn: () => adminApi.getAIAlerts(),
-    refetchInterval: 60000, // Tự động cập nhật mỗi 1 phút
+    refetchInterval: 60000,
   });
 
-  const latestAlert = alertResponse?.data?.[0]; // Lấy cảnh báo mới nhất
+  const latestAlert = alertResponse?.data?.[0];
 
   const revokeMutation = useMutation({
     mutationFn: ({ ticketId, reason }: { ticketId: number; reason: string }) =>
       adminApi.revokeTicket(ticketId, reason),
     onSuccess: () => {
-      alert("Đã thu hồi vé và hoàn tiền thành công!");
       queryClient.invalidateQueries({ queryKey: ["admin-tickets"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-ticket-alerts"] });
+      queryClient.invalidateQueries({ queryKey: ["wallet"] });
+      queryClient.invalidateQueries({ queryKey: ["my-tickets"] });
+      alert("Đã thu hồi vé và hoàn tiền thành công!");
     },
     onError: (err: any) => alert(err.message || "Lỗi khi thu hồi vé"),
+    onSettled: () => setRevokingTicketId(null),
   });
 
   const handleRevoke = (ticketId: number) => {
@@ -50,7 +54,8 @@ export default function TicketManagement() {
       "Nhập lý do thu hồi vé này (VD: Lỗi giá 0đ, Bug hệ thống...):",
     );
     if (reason && reason.trim().length > 0) {
-      revokeMutation.mutate({ ticketId, reason });
+      setRevokingTicketId(ticketId);
+      revokeMutation.mutate({ ticketId, reason: reason.trim() });
     }
   };
 
@@ -74,11 +79,10 @@ export default function TicketManagement() {
         </button>
       </div>
 
-      {/* ✅ HIỂN THỊ CẢNH BÁO TỰ ĐỘNG TỪ AI */}
       {latestAlert && (
         <div className="p-4 rounded-2xl border bg-rose-500/10 border-rose-500/20">
           <h3 className="flex items-center gap-2 font-semibold mb-2 text-rose-400">
-            <AlertTriangle className="h-5 w-5" />
+            <Bot className="h-5 w-5" />
             Báo cáo tự động từ AI ({formatDate(latestAlert.createdAt)})
           </h3>
           <p className="text-sm text-[#F5F5F7] mb-2">
@@ -136,6 +140,7 @@ export default function TicketManagement() {
                 const rowClass = ticket.isAnomaly
                   ? "bg-rose-500/5"
                   : "hover:bg-white/[0.02]";
+                const isRevoking = revokingTicketId === ticket.id;
                 return (
                   <tr
                     key={ticket.id}
@@ -184,7 +189,8 @@ export default function TicketManagement() {
                     </td>
                     <td className="p-4">
                       {ticket.status === "CONFIRMED" ? (
-                        <span className="inline-flex items-center px-2 py-1 rounded-md bg-emerald-500/10 text-emerald-400 text-xs font-medium border border-emerald-500/20">
+                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-500/10 text-emerald-400 text-xs font-medium border border-emerald-500/20">
+                          <ShieldCheck className="h-3 w-3" />
                           Thành công
                         </span>
                       ) : ticket.status === "REVOKED_BY_ADMIN" ? (
@@ -201,10 +207,25 @@ export default function TicketManagement() {
                       {ticket.status === "CONFIRMED" && (
                         <button
                           onClick={() => handleRevoke(ticket.id)}
-                          className="px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 rounded-lg text-xs font-medium transition"
+                          disabled={isRevoking}
+                          className={cn(
+                            "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all duration-200",
+                            isRevoking
+                              ? "bg-rose-500/20 border-rose-500/30 text-rose-300 cursor-wait"
+                              : "bg-rose-500/10 hover:bg-rose-500/20 border-rose-500/20 text-rose-400",
+                          )}
                         >
-                          <XCircle className="h-3.5 w-3.5 inline mr-1" /> Thu
-                          hồi
+                          {isRevoking ? (
+                            <>
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              Đang thu hồi...
+                            </>
+                          ) : (
+                            <>
+                              <XCircle className="h-3.5 w-3.5" />
+                              Thu hồi
+                            </>
+                          )}
                         </button>
                       )}
                     </td>
@@ -216,7 +237,6 @@ export default function TicketManagement() {
         </table>
       </div>
 
-      {/* Phân trang giữ nguyên như cũ */}
       {!isLoading && totalPages > 1 && (
         <div className="flex items-center justify-center gap-6 mt-6 pt-6 border-t border-white/[0.08]">
           <button

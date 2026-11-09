@@ -19,7 +19,6 @@ const redisConnection = new Redis(redisUrl, {
 export const mailWorker = new Worker<AllJobData>(
   "mail-queue",
   async (job: Job<AllJobData>) => {
-    // LOGIC 1: GỬI OTP
     if (job.name === "send-otp-job") {
       const { email, code, type } = job.data as MailJobData;
       console.log(`[QUEUE WORKER] Đang xử lý gửi mail OTP: ${email}`);
@@ -30,7 +29,6 @@ export const mailWorker = new Worker<AllJobData>(
       return result;
     }
 
-    // LOGIC 2: GỬI THÔNG BÁO (Đã đặt đúng vào bên trong Worker)
     if (job.name === "send-notification-job") {
       const { email, type, data } = job.data as NotificationJobData;
       console.log(
@@ -48,7 +46,7 @@ export const mailWorker = new Worker<AllJobData>(
         html = `<p>Bạn đã hủy vé chuyến ${data.route}. Tiền đã được hoàn vào ví.</p>`;
       } else if (type === "ADMIN_REVOKE") {
         subject = `[NexusTicket] Vé của bạn đã bị thu hồi`;
-        html = `<p>Vé chuyến ${data.route} đã bị Admin thu hồi. Lý do: ${data.reason}</p>`;
+        html = `<p>Vé chuyến <b>${data.route}</b> đã bị Admin thu hồi.</p><p><b>Lý do:</b> ${data.reason}</p>`;
       } else if (type === "ADMIN_GIFT") {
         subject = `[NexusTicket] Bạn nhận được quà tặng!`;
         html = `<p>Bạn vừa được Admin tặng ${data.amount} VNĐ. Lý do: ${data.reason}</p>`;

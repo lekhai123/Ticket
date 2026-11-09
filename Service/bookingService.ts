@@ -149,15 +149,17 @@ export class BookingService {
 
   /**
    * ADMIN THU HỒI VÉ LẺ
+   * - Hoàn tiền dựa trên paidAmount (không phụ thuộc paymentMethod cũ)
+   * - Ghi audit log đầy đủ reason + adminUserId
    */
   static async adminRevokeTicket(
     ticketId: number,
-    adminUserId: number, //Nhận thêm ID của Admin thực hiện
+    adminUserId: number,
     reason: string = "Admin thu hồi thủ công",
   ) {
     const ticket = await prisma.tickets.findUnique({
       where: { id: ticketId },
-      include: { trip: true, user: true }, // Lấy thêm thông tin user để gửi mail
+      include: { trip: true, user: true },
     });
 
     if (!ticket) throw new Error("Không tìm thấy vé!");
@@ -171,21 +173,22 @@ export class BookingService {
         data: { status: "REVOKED_BY_ADMIN" },
       });
 
+      // CONFIRMED là hoàn tiền theo đúng số đã trả (0đ thì hoàn 0đ)
       let refundAmount = 0;
       if (ticket.status === "CONFIRMED") {
-        if (
-          ticket.paymentMethod === "WALLET" ||
-          ticket.paymentMethod === "LEGACY"
-        ) {
-          refundAmount = Number(ticket.paidAmount || ticket.trip.price);
-        }
+        refundAmount = Number(ticket.paidAmount ?? ticket.trip.price ?? 0);
       }
 
       if (refundAmount > 0) {
         const wallet = await tx.wallets.findUnique({
           where: { userId: ticket.userId },
         });
-        const currentBalance = Number(wallet?.balance || 0);
+        if (!wallet) {
+          throw new Error(
+            "Không tìm thấy ví để hoàn tiền! Dữ liệu vé bất thường.",
+          );
+        }
+        const currentBalance = Number(wallet.balance || 0);
 
         await tx.wallets.update({
           where: { userId: ticket.userId },
@@ -199,7 +202,7 @@ export class BookingService {
             action: "REFUND_TICKET_PAYMENT",
             batchId: `ADMIN_REVOKE_${ticketId}`,
             resource: "Wallets",
-            resourceId: String(wallet?.id || ticket.userId),
+            resourceId: String(wallet.id),
             oldData: { balance: currentBalance },
             newData: {
               amount: refundAmount,
@@ -222,7 +225,7 @@ export class BookingService {
             status: "REVOKED_BY_ADMIN",
             reason,
             refunded: refundAmount,
-            performedByAdminId: adminUserId, // lưu ID của người thao tác
+            performedByAdminId: adminUserId,
           },
         },
       });
@@ -238,7 +241,6 @@ export class BookingService {
       console.warn("[BOOKING] Xóa cache thất bại:", cacheErr.message);
     }
 
-    // Gửi mail thông báo bị thu hồi
     try {
       if (ticket.user) {
         await sendNotificationEmail({
@@ -256,6 +258,7 @@ export class BookingService {
 
   /**
    * KHÁCH HÀNG CHỦ ĐỘNG HỦY VÉ
+   * ✅ Fix over-refund: hoàn đúng paidAmount thực tế
    */
   static async cancelTicket(userId: number, ticketId: number) {
     const ticket = await prisma.tickets.findUnique({
@@ -292,30 +295,37 @@ export class BookingService {
       });
 
       if (ticket.status === "CONFIRMED") {
-        const wallet = await tx.wallets.findUnique({ where: { userId } });
-        const currentBalance = Number(wallet?.balance || 0);
-        const refundAmount = Number(ticket.trip.price);
+        const refundAmount = Number(
+          ticket.paidAmount ?? ticket.trip.price ?? 0,
+        );
+        if (refundAmount > 0) {
+          const wallet = await tx.wallets.findUnique({ where: { userId } });
+          if (!wallet) {
+            throw new Error("Không tìm thấy ví để hoàn tiền!");
+          }
+          const currentBalance = Number(wallet.balance || 0);
 
-        await tx.wallets.update({
-          where: { userId },
-          data: { balance: { increment: refundAmount } },
-        });
+          await tx.wallets.update({
+            where: { userId },
+            data: { balance: { increment: refundAmount } },
+          });
 
-        await tx.auditLog.create({
-          data: {
-            requestId: `REFUND_TICKET_${Date.now()}`,
-            userId,
-            action: "REFUND_TICKET_PAYMENT",
-            resource: "Wallets",
-            resourceId: String(wallet?.id || userId),
-            oldData: { balance: currentBalance },
-            newData: {
-              amount: refundAmount,
-              description: `Hoàn tiền hủy vé chuyến ${ticket.trip.route} (Ghế A${ticket.seatNumber})`,
-              newBalance: currentBalance + refundAmount,
+          await tx.auditLog.create({
+            data: {
+              requestId: `REFUND_TICKET_${Date.now()}`,
+              userId,
+              action: "REFUND_TICKET_PAYMENT",
+              resource: "Wallets",
+              resourceId: String(wallet.id),
+              oldData: { balance: currentBalance },
+              newData: {
+                amount: refundAmount,
+                description: `Hoàn tiền hủy vé chuyến ${ticket.trip.route} (Ghế A${ticket.seatNumber})`,
+                newBalance: currentBalance + refundAmount,
+              },
             },
-          },
-        });
+          });
+        }
       }
 
       return updatedTicket;
@@ -329,7 +339,6 @@ export class BookingService {
       console.warn("[BOOKING] Xóa cache thất bại:", cacheErr.message);
     }
 
-    // Gửi mail thông báo hủy vé thành công
     try {
       if (ticket.user) {
         await sendNotificationEmail({
