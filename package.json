@@ -4,6 +4,7 @@
   "description": "Backend API Server",
   "main": "server.ts",
   "scripts": {
+    "postinstall": "prisma generate",
     "dev": "tsx watch server.ts",
     "test": "jest --runInBand",
     "dev:fe": "cd frontend && npm run dev",
