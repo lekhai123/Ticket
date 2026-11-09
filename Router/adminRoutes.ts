@@ -89,6 +89,7 @@ router.get("/cron/reconciliation", async (req, res) => {
     return res.status(500).json({ error: error.message });
   }
 });
+router.post("/bookings/:ticketId/revoke", AdminController.revokeSingleTicket);
 router.post("/reconciliation/trigger", async (req, res) => {
   try {
     const report = await ReconciliationService.runDailyReconciliation();

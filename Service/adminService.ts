@@ -125,7 +125,12 @@ export class AdminService {
           fullName: true,
           role: true,
           createdAt: true,
-          wallet: { select: { balance: true } },
+          wallet: {
+            select: {
+              balance: true,
+              isLocked: true, //THÊM DÒNG NÀY ĐỂ LẤY TRẠNG THÁI KHÓA VÍ
+            },
+          },
         },
         skip,
         take: limit,

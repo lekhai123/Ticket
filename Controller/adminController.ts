@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from "express";
 import { AdminService } from "../Service/adminService";
 import prisma from "../database/prismaClient";
 import { TicketService } from "../Service/ticketService";
+import { BookingService } from "../Service/bookingService";
 
 const catchAsync =
   (fn: (req: Request, res: Response, next: NextFunction) => Promise<any>) =>
@@ -41,6 +42,29 @@ export class AdminController {
     const result = await TicketService.scanAnomalies();
     res.status(200).json({ success: true, data: result });
   });
+  static revokeSingleTicket = catchAsync(
+    async (req: Request, res: Response) => {
+      const ticketId = Number(req.params.ticketId);
+      const { reason } = req.body;
+
+      if (!ticketId) {
+        return res
+          .status(400)
+          .json({ success: false, message: "Mã vé không hợp lệ!" });
+      }
+
+      const result = await BookingService.adminRevokeTicket(
+        ticketId,
+        reason || "Admin thu hồi vé lẻ",
+      );
+
+      res.status(200).json({
+        success: true,
+        message: "Đã thu hồi vé thành công!",
+        data: result,
+      });
+    },
+  );
   static getUsers = catchAsync(async (req: Request, res: Response) => {
     const page = req.query.page ? Number(req.query.page) : 1;
     const limit = req.query.limit ? Number(req.query.limit) : 10;
