@@ -6,9 +6,9 @@ import prisma from "../database/prismaClient";
 import { MailJobData, NotificationJobData, AllJobData } from "./mailQueue";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
+const fromEmail = process.env.fromEmail;
 
 const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
-const fromEmail = process.env.fromEmail;
 const isTls = redisUrl.startsWith("rediss://");
 
 const redisConnection = new Redis(redisUrl, {
@@ -35,23 +35,20 @@ export const mailWorker = new Worker<AllJobData>(
 
     if (job.name === "send-notification-job") {
       const { email, type, data } = job.data as NotificationJobData;
-      console.log(`[QUEUE WORKER] Notif ${type} → ${email}`);
+      console.log(`[QUEUE WORKER] Notif ${type} -> ${email}`);
 
       try {
         let subject = "";
         let html = "";
 
-        // BATCH: GOM NHIỀU VÉ
         if (type === "BOOKING_SUCCESS_BATCH" || type === "ADMIN_REVOKE_BATCH") {
           const { userId, batchId, reason } = data as {
             userId: number;
             batchId: string | null;
             reason?: string;
           };
-
           const targetStatus =
             type === "ADMIN_REVOKE_BATCH" ? "REVOKED_BY_ADMIN" : "CONFIRMED";
-
           const where: any = { userId, status: targetStatus };
 
           if (batchId && !batchId.startsWith("SINGLE_")) {
@@ -70,7 +67,7 @@ export const mailWorker = new Worker<AllJobData>(
           });
 
           if (tickets.length === 0) {
-            console.log(`[QUEUE WORKER] ${type}: Không có vé nào → skip`);
+            console.log(`[QUEUE WORKER] ${type}: Không có vé nào -> skip`);
             return { success: true, skipped: true };
           }
 
@@ -83,18 +80,9 @@ export const mailWorker = new Worker<AllJobData>(
           );
 
           const rowsHtml = `
-            <tr>
-              <td style="padding:8px 12px;border:1px solid #e5e7eb;background:#f9fafb;font-weight:600;width:160px;">Email khách</td>
-              <td style="padding:8px 12px;border:1px solid #e5e7eb;">${user.email}</td>
-            </tr>
-            <tr>
-              <td style="padding:8px 12px;border:1px solid #e5e7eb;background:#f9fafb;font-weight:600;">Chuyến xe</td>
-              <td style="padding:8px 12px;border:1px solid #e5e7eb;">${route}</td>
-            </tr>
-            <tr>
-              <td style="padding:8px 12px;border:1px solid #e5e7eb;background:#f9fafb;font-weight:600;">Ghế (${tickets.length})</td>
-              <td style="padding:8px 12px;border:1px solid #e5e7eb;">${seats}</td>
-            </tr>
+            <tr><td style="padding:8px 12px;border:1px solid #e5e7eb;background:#f9fafb;font-weight:600;width:160px;">Email khách</td><td style="padding:8px 12px;border:1px solid #e5e7eb;">${user.email}</td></tr>
+            <tr><td style="padding:8px 12px;border:1px solid #e5e7eb;background:#f9fafb;font-weight:600;">Chuyến xe</td><td style="padding:8px 12px;border:1px solid #e5e7eb;">${route}</td></tr>
+            <tr><td style="padding:8px 12px;border:1px solid #e5e7eb;background:#f9fafb;font-weight:600;">Ghế (${tickets.length})</td><td style="padding:8px 12px;border:1px solid #e5e7eb;">${seats}</td></tr>
           `;
 
           if (type === "ADMIN_REVOKE_BATCH") {
@@ -106,18 +94,11 @@ export const mailWorker = new Worker<AllJobData>(
                 <p>Các vé sau đây của bạn đã bị Admin thu hồi:</p>
                 <table style="border-collapse:collapse;width:100%;margin:16px 0;">
                   ${rowsHtml}
-                  <tr>
-                    <td style="padding:8px 12px;border:1px solid #e5e7eb;background:#f9fafb;font-weight:600;">Lý do</td>
-                    <td style="padding:8px 12px;border:1px solid #e5e7eb;color:#dc2626;"><b>${reason || "Admin thu hồi"}</b></td>
-                  </tr>
-                  <tr>
-                    <td style="padding:8px 12px;border:1px solid #e5e7eb;background:#f9fafb;font-weight:600;">Hoàn tiền</td>
-                    <td style="padding:8px 12px;border:1px solid #e5e7eb;color:#16a34a;"><b>${formatVND(totalAmount)}</b></td>
-                  </tr>
+                  <tr><td style="padding:8px 12px;border:1px solid #e5e7eb;background:#f9fafb;font-weight:600;">Lý do</td><td style="padding:8px 12px;border:1px solid #e5e7eb;color:#dc2626;"><b>${reason || "Admin thu hồi"}</b></td></tr>
+                  <tr><td style="padding:8px 12px;border:1px solid #e5e7eb;background:#f9fafb;font-weight:600;">Hoàn tiền</td><td style="padding:8px 12px;border:1px solid #e5e7eb;color:#16a34a;"><b>${formatVND(totalAmount)}</b></td></tr>
                 </table>
                 <p>Tiền hoàn đã được cộng vào ví điện tử của bạn.</p>
-              </div>
-            `;
+              </div>`;
           } else {
             subject = `[NexusTicket] Đặt vé thành công - Chuyến ${route}`;
             html = `
@@ -127,37 +108,33 @@ export const mailWorker = new Worker<AllJobData>(
                 <p>Bạn đã đặt thành công <b>${tickets.length} vé</b>:</p>
                 <table style="border-collapse:collapse;width:100%;margin:16px 0;">
                   ${rowsHtml}
-                  <tr>
-                    <td style="padding:8px 12px;border:1px solid #e5e7eb;background:#f9fafb;font-weight:600;">Tổng tiền</td>
-                    <td style="padding:8px 12px;border:1px solid #e5e7eb;color:#16a34a;"><b>${formatVND(totalAmount)}</b></td>
-                  </tr>
+                  <tr><td style="padding:8px 12px;border:1px solid #e5e7eb;background:#f9fafb;font-weight:600;">Tổng tiền</td><td style="padding:8px 12px;border:1px solid #e5e7eb;color:#16a34a;"><b>${formatVND(totalAmount)}</b></td></tr>
                 </table>
                 <p>Chúc bạn có chuyến đi vui vẻ!</p>
-              </div>
-            `;
+              </div>`;
           }
-        }
-        // CÁC LOẠI MAIL ĐƠN LẺ
-        else if (type === "BOOKING_SUCCESS") {
+        } else if (type === "BOOKING_SUCCESS") {
           subject = `[NexusTicket] Đặt vé thành công - Chuyến ${data.route}`;
           html = `<p>Bạn đã thanh toán thành công vé ghế A${data.seat}.</p>`;
         } else if (type === "BOOKING_CANCEL") {
           subject = `[NexusTicket] Hủy vé thành công`;
-          html = `<p>Bạn đã hủy vé chuyến ${data.route}. Tiền đã được hoàn vào ví.</p>`;
+          html = `<p>Bạn đã hủy vé chuyến <b>${data.route}</b> (Ghế A${data.seat}). Tiền đã được hoàn vào ví.</p>`;
         } else if (type === "ADMIN_REVOKE") {
           subject = `[NexusTicket] Vé của bạn đã bị thu hồi`;
           html = `<p>Vé chuyến <b>${data.route}</b> (Ghế A${data.seat || "?"}) đã bị Admin thu hồi.</p><p><b>Lý do:</b> ${data.reason}</p>`;
         } else if (type === "ADMIN_GIFT") {
           subject = `[NexusTicket] Bạn nhận được quà tặng!`;
-          html = `<p>Bạn vừa được Admin tặng ${formatVND(Number(data.amount))}. Lý do: ${data.reason}</p>`;
+          html = `<p>Bạn vừa được Admin tặng <b>${formatVND(Number(data.amount))}</b> vào ví.</p><p><b>Lý do:</b> ${data.reason || "Quà tặng từ hệ thống"}</p>`;
+        } else if (type === "ADMIN_REVOKE_GIFT") {
+          subject = `[NexusTicket] Thông báo thu hồi quà tặng`;
+          html = `<p>Admin đã thu hồi <b>${formatVND(Number(data.amount))}</b> từ ví của bạn.</p><p><b>Lý do:</b> ${data.reason}</p>`;
         }
 
         if (!subject || !html) {
-          console.warn(`[QUEUE WORKER] Unknown type: ${type} → skip`);
+          console.warn(`[QUEUE WORKER] Unknown type: ${type} -> skip`);
           return { success: false, skipped: true };
         }
 
-        // THÊM TRY/CATCH BẮT LỖI TỪ RESEND
         const mailRes = await resend.emails.send({
           from: fromEmail,
           to: email,
@@ -174,7 +151,7 @@ export const mailWorker = new Worker<AllJobData>(
         return { success: true };
       } catch (error: any) {
         console.error(`[QUEUE WORKER] Lỗi xử lý thông báo ${type}:`, error);
-        throw error; // Ném lỗi để BullMQ đánh dấu job Failed (hiển thị đỏ trong log)
+        throw error;
       }
     }
   },
@@ -195,4 +172,4 @@ mailWorker.on("error", (err) =>
   console.error("[QUEUE WORKER ERROR]:", err.message),
 );
 
-console.log("🚀 Mail Worker đã khởi động và đang chờ Job...");
+console.log("Mail Worker đã khởi động và đang chờ Job...");

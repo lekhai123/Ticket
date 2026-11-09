@@ -15,7 +15,6 @@ export class BookingService {
     batchId?: string,
   ) {
     const t0 = Date.now();
-
     const lockKey = `lock:trip:${tripId}:seat:${seatNumber}`;
     const lockToken = await RedisLock.acquire(lockKey, 30);
     const t1 = Date.now();
@@ -29,12 +28,10 @@ export class BookingService {
     }
 
     let result: any;
-
     try {
       result = await prisma.$transaction(
         async (tx) => {
           await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`seat:${tripId}:${seatNumber}`}))::text`;
-
           const existingTicket = await tx.tickets.findFirst({
             where: {
               tripId,
@@ -49,14 +46,12 @@ export class BookingService {
             error.statusCode = 400;
             throw error;
           }
-
           const trip = await tx.trips.findUnique({ where: { id: tripId } });
           if (!trip) {
             const error: any = new Error("Chuyến xe không tồn tại!");
             error.statusCode = 404;
             throw error;
           }
-
           let initialStatus: "HELD" | "PENDING" | "CONFIRMED" = "PENDING";
           let currentBalance = 0;
           const tripPrice = Number(trip.price);
@@ -66,7 +61,7 @@ export class BookingService {
             const wallet = await tx.wallets.findUnique({ where: { userId } });
             if (!wallet || wallet.isLocked) {
               const error: any = new Error(
-                "Ví của bạn đang bị khóa do vi phạm hoặc chờ đối soát. Vui lòng liên hệ Admin!",
+                "Ví của bạn đang bị khóa do vi phạm hoặc chờ đối soát.",
               );
               error.statusCode = 403;
               throw error;
@@ -121,7 +116,6 @@ export class BookingService {
               },
             });
           }
-
           return newTicket;
         },
         { timeout: 15000 },
@@ -140,10 +134,7 @@ export class BookingService {
             type: "BOOKING_SUCCESS_BATCH",
             data: { userId, batchId: effectiveBatchId },
           },
-          {
-            delayMs: 10000,
-            jobId: `booking-notif-${effectiveBatchId}`,
-          },
+          { delayMs: 10000, jobId: `booking-notif-${effectiveBatchId}` },
         );
       } catch (mailErr: any) {
         console.error("[BOOKING] Schedule mail error:", mailErr?.message);
@@ -161,7 +152,6 @@ export class BookingService {
     console.log(
       `[TIMING][BOOK] lock=${t1 - t0}ms tx=${t2 - t1}ms mail=${t3 - t2}ms total=${t3 - t0}ms`,
     );
-
     return result;
   }
 
@@ -173,7 +163,6 @@ export class BookingService {
     batchId?: string,
   ) {
     const t0 = Date.now();
-
     if (!seatNumbers || seatNumbers.length === 0) {
       const error: any = new Error("Vui lòng chọn ít nhất 1 ghế!");
       error.statusCode = 400;
@@ -198,7 +187,6 @@ export class BookingService {
       resultTickets = await prisma.$transaction(
         async (tx) => {
           await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`trip:${tripId}`}))::text`;
-
           const existingTickets = await tx.tickets.findMany({
             where: {
               tripId,
@@ -206,7 +194,6 @@ export class BookingService {
               status: { in: ["HELD", "PENDING", "CONFIRMED"] },
             },
           });
-
           if (existingTickets.length > 0) {
             const takenSeats = existingTickets
               .map((t) => t.seatNumber)
@@ -227,7 +214,6 @@ export class BookingService {
 
           const tripPrice = Number(trip.price);
           const totalPrice = tripPrice * sortedSeats.length;
-
           let currentBalance = 0;
           let walletId = userId;
           let initialStatus: "PENDING" | "CONFIRMED" = "PENDING";
@@ -236,14 +222,13 @@ export class BookingService {
             const wallet = await tx.wallets.findUnique({ where: { userId } });
             if (!wallet || wallet.isLocked) {
               const error: any = new Error(
-                "Ví của bạn đang bị khóa do vi phạm hoặc chờ đối soát. Vui lòng liên hệ Admin!",
+                "Ví của bạn đang bị khóa do vi phạm hoặc chờ đối soát.",
               );
               error.statusCode = 403;
               throw error;
             }
             currentBalance = Number(wallet.balance || 0);
             walletId = wallet.id;
-
             if (currentBalance < totalPrice) {
               const error: any = new Error(
                 "Số dư ví không đủ để thanh toán các vé này!",
@@ -251,7 +236,6 @@ export class BookingService {
               error.statusCode = 400;
               throw error;
             }
-
             await tx.wallets.update({
               where: { userId },
               data: { balance: { decrement: totalPrice } },
@@ -297,7 +281,6 @@ export class BookingService {
               },
             });
           }
-
           return newTickets;
         },
         { timeout: 20000 },
@@ -320,10 +303,7 @@ export class BookingService {
             type: "BOOKING_SUCCESS_BATCH",
             data: { userId, batchId: effectiveBatchId },
           },
-          {
-            delayMs: 10000,
-            jobId: `booking-notif-${effectiveBatchId}`,
-          },
+          { delayMs: 10000, jobId: `booking-notif-${effectiveBatchId}` },
         );
       } catch (mailErr: any) {
         console.error("[BOOKING] Schedule mail error:", mailErr?.message);
@@ -341,7 +321,6 @@ export class BookingService {
     console.log(
       `[TIMING][BULK_BOOK] lock=${t1 - t0}ms tx=${t2 - t1}ms mail=${t3 - t2}ms total=${t3 - t0}ms`,
     );
-
     return resultTickets;
   }
 
@@ -354,39 +333,33 @@ export class BookingService {
       where: { id: ticketId },
       include: { trip: true, user: true },
     });
-
     if (!ticket) throw new Error("Không tìm thấy vé!");
-    if (ticket.status === "REVOKED_BY_ADMIN" || ticket.status === "CANCELED") {
+    if (ticket.status === "REVOKED_BY_ADMIN" || ticket.status === "CANCELED")
       throw new Error("Vé này đã bị thu hồi/hủy trước đó!");
-    }
 
     const result = await prisma.$transaction(async (tx) => {
       const updated = await tx.tickets.update({
         where: { id: ticketId },
         data: { status: "REVOKED_BY_ADMIN" },
       });
-
       let refundAmount = 0;
-      if (ticket.status === "CONFIRMED") {
+      if (ticket.status === "CONFIRMED")
         refundAmount = Number(ticket.paidAmount ?? ticket.trip.price ?? 0);
-      }
 
       if (refundAmount > 0) {
         const wallet = await tx.wallets.findUnique({
           where: { userId: ticket.userId },
         });
-        if (!wallet) {
+        if (!wallet)
           throw new Error(
             "Không tìm thấy ví để hoàn tiền! Dữ liệu vé bất thường.",
           );
-        }
         const currentBalance = Number(wallet.balance || 0);
 
         await tx.wallets.update({
           where: { userId: ticket.userId },
           data: { balance: { increment: refundAmount } },
         });
-
         await tx.auditLog.create({
           data: {
             requestId: `ADMIN_REVOKE_REFUND_${Date.now()}`,
@@ -421,7 +394,6 @@ export class BookingService {
           },
         },
       });
-
       return updated;
     });
 
@@ -433,16 +405,9 @@ export class BookingService {
           {
             email: ticket.user.email,
             type: "ADMIN_REVOKE_BATCH",
-            data: {
-              userId: ticket.userId,
-              batchId: effectiveBatchId,
-              reason,
-            },
+            data: { userId: ticket.userId, batchId: effectiveBatchId, reason },
           },
-          {
-            delayMs: 30000,
-            jobId: `revoke-notif-${effectiveBatchId}`,
-          },
+          { delayMs: 30000, jobId: `revoke-notif-${effectiveBatchId}` },
         );
       } catch (mailErr: any) {
         console.error("[BOOKING] Schedule revoke mail:", mailErr?.message);
@@ -465,19 +430,16 @@ export class BookingService {
       where: { id: ticketId },
       include: { trip: true, user: true },
     });
-
     if (!ticket) {
       const error: any = new Error("Không tìm thấy vé đặt!");
       error.statusCode = 404;
       throw error;
     }
-
     if (ticket.userId !== userId) {
       const error: any = new Error("Bạn không có quyền hủy vé này!");
       error.statusCode = 403;
       throw error;
     }
-
     if (
       ticket.status === "CANCELED" ||
       ticket.status === "USED" ||
@@ -499,19 +461,14 @@ export class BookingService {
           ticket.paidAmount ?? ticket.trip.price ?? 0,
         );
         if (refundAmount > 0) {
-          const wallet = await tx.wallets.findUnique({
-            where: { userId },
-          });
-          if (!wallet) {
-            throw new Error("Không tìm thấy ví để hoàn tiền!");
-          }
+          const wallet = await tx.wallets.findUnique({ where: { userId } });
+          if (!wallet) throw new Error("Không tìm thấy ví để hoàn tiền!");
           const currentBalance = Number(wallet.balance || 0);
 
           await tx.wallets.update({
             where: { userId },
             data: { balance: { increment: refundAmount } },
           });
-
           await tx.auditLog.create({
             data: {
               requestId: `REFUND_TICKET_${Date.now()}`,
@@ -529,7 +486,6 @@ export class BookingService {
           });
         }
       }
-
       return updatedTicket;
     });
 
@@ -538,7 +494,10 @@ export class BookingService {
         await sendNotificationEmail({
           email: ticket.user.email,
           type: "BOOKING_CANCEL",
-          data: { route: ticket.trip.route },
+          data: {
+            route: ticket.trip.route,
+            seat: ticket.seatNumber,
+          },
         });
       } catch (mailErr: any) {
         console.error("[BOOKING] Hủy vé mail error:", mailErr?.message);
