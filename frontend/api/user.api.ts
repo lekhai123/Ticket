@@ -2,19 +2,20 @@ import axiosClient from "./axiosClient";
 import type { ApiResponse, User } from "../types";
 
 export const userApi = {
-  // Lấy danh sách users (Admin)
+  // Thêm page và limit vào params
   getUsers: async (params?: {
     search?: string;
     role?: string;
     status?: string;
-  }): Promise<ApiResponse<User[]>> => {
-    const res = await axiosClient.get<ApiResponse<User[]>>("/admin/users", {
+    page?: number;
+    limit?: number;
+  }): Promise<any> => {
+    const res = await axiosClient.get<any>("/admin/users", {
       params,
     });
     return res.data;
   },
 
-  // Cập nhật trạng thái ACTIVE / BANNED (Admin)
   updateStatus: async (
     userId: number,
     status: "ACTIVE" | "BANNED",
@@ -26,7 +27,6 @@ export const userApi = {
     return res.data;
   },
 
-  // Cập nhật vai trò ADMIN / CUSTOMER (Admin)
   updateRole: async (
     userId: number,
     role: "ADMIN" | "CUSTOMER",
@@ -38,7 +38,6 @@ export const userApi = {
     return res.data;
   },
 
-  // 🎯 Cập nhật ảnh đại diện Avatar (User)
   updateAvatar: async (file: File): Promise<ApiResponse<User>> => {
     const formData = new FormData();
     formData.append("avatar", file);

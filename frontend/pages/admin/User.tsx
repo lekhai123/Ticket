@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Search, Filter, Ban, Unlock } from "lucide-react";
+import { Search, Ban, Unlock } from "lucide-react";
 import { useUsers } from "../../hooks/useUser";
 import { VipBadge } from "../../components/common/VipBadge";
 import { Input } from "../../components/ui/Input";
@@ -8,14 +8,13 @@ import { cn } from "../../utils/cn";
 
 export default function Users() {
   const [search, setSearch] = useState("");
-  const { users, isLoading, updateStatus } = useUsers({ search });
+  const [page, setPage] = useState(1);
 
-  const userList = Array.isArray(users)
-    ? users
-    : (users as any)?.users ||
-      (users as any)?.data?.users ||
-      (users as any)?.data ||
-      [];
+  // Lấy dữ liệu và phân trang từ hook
+  const { usersData, isLoading, updateStatus } = useUsers({ search }, page);
+
+  const userList = usersData?.users || [];
+  const totalPages = usersData?.pagination?.totalPages || 1;
 
   const handleToggleStatus = async (userId: number, currentStatus: string) => {
     const newStatus = currentStatus === "ACTIVE" ? "BANNED" : "ACTIVE";
@@ -49,7 +48,10 @@ export default function Users() {
         <div className="relative max-w-md w-full">
           <Input
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1); // Reset về trang 1 khi tìm kiếm
+            }}
             placeholder="Tìm Tên, Email..."
             className="w-full bg-[#15151B] border-white/[0.08] text-[#F5F5F7] pl-10"
           />
@@ -160,6 +162,36 @@ export default function Users() {
           </tbody>
         </table>
       </div>
+
+      {/* THÊM NÚT PHÂN TRANG */}
+      {!isLoading && totalPages > 1 && (
+        <div className="flex items-center justify-center gap-6 mt-6 pt-6 border-t border-white/[0.08]">
+          <button
+            onClick={() => {
+              setPage((p) => p - 1);
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }}
+            disabled={page === 1}
+            className="px-5 py-2.5 rounded-xl border border-white/[0.08] bg-[#15151B] text-sm font-medium text-[#F5F5F7] disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white/[0.04]"
+          >
+            Trang trước
+          </button>
+          <span className="text-sm text-[#92929F]">
+            Trang <strong className="text-[#F5F5F7]">{page}</strong> /{" "}
+            {totalPages}
+          </span>
+          <button
+            onClick={() => {
+              setPage((p) => p + 1);
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }}
+            disabled={page >= totalPages}
+            className="px-5 py-2.5 rounded-xl border border-white/[0.08] bg-[#15151B] text-sm font-medium text-[#F5F5F7] disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white/[0.04]"
+          >
+            Trang sau
+          </button>
+        </div>
+      )}
     </div>
   );
 }

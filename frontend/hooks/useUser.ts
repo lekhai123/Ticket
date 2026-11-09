@@ -2,9 +2,6 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { userApi } from "../api/user.api";
 import { useAuthStore } from "../store/authStore";
 
-/**
- * 🎯 1. HOOK DÀNH CHO CÁ NHÂN USER (Cập nhật Avatar, Profile,...)
- */
 export const useUser = () => {
   const queryClient = useQueryClient();
   const setUser = useAuthStore((state) => state.setUser);
@@ -12,19 +9,12 @@ export const useUser = () => {
   const updateAvatarMutation = useMutation({
     mutationFn: (file: File) => userApi.updateAvatar(file),
     onSuccess: (res) => {
-      // userApi.updateAvatar() trả về ApiResponse<User> -> res.data chứa User object
       const updatedUser = res.data;
-
-      if (updatedUser) {
-        setUser(updatedUser);
-      }
-
+      if (updatedUser) setUser(updatedUser);
       queryClient.invalidateQueries({ queryKey: ["auth", "profile"] });
       alert("Cập nhật ảnh đại diện thành công!");
     },
-    onError: (err: any) => {
-      alert(err?.message || "Tải ảnh đại diện thất bại!");
-    },
+    onError: (err: any) => alert(err?.message || "Tải ảnh đại diện thất bại!"),
   });
 
   return {
@@ -33,48 +23,38 @@ export const useUser = () => {
   };
 };
 
-/**
- * 🎯 2. HOOK DÀNH CHO ADMIN QUẢN TRỊ (Lấy danh sách, Khóa/Mở, Đổi Role,...)
- */
-export const useUsers = (filters?: {
-  search?: string;
-  role?: string;
-  status?: string;
-}) => {
+// Cập nhật hàm useUsers nhận thêm tham số page
+export const useUsers = (
+  filters?: { search?: string; role?: string; status?: string },
+  page: number = 1,
+) => {
   const queryClient = useQueryClient();
 
   const usersQuery = useQuery({
-    queryKey: ["users", filters],
+    queryKey: ["users", filters, page], // Thêm page vào key
     queryFn: async () => {
-      // userApi.getUsers() trả về ApiResponse<User[]>
-      const res = await userApi.getUsers(filters);
-      return res.data || [];
+      const res = await userApi.getUsers({ ...filters, page, limit: 10 });
+      return res.data; // Trả về nguyên object { users, pagination }
     },
   });
 
   const updateStatusMutation = useMutation({
     mutationFn: ({ id, status }: { id: number; status: "ACTIVE" | "BANNED" }) =>
       userApi.updateStatus(id, status),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["users"] });
-    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["users"] }),
   });
 
   const updateRoleMutation = useMutation({
     mutationFn: ({ id, role }: { id: number; role: "ADMIN" | "CUSTOMER" }) =>
       userApi.updateRole(id, role),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["users"] });
-    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["users"] }),
   });
 
   return {
-    users: usersQuery.data || [],
+    usersData: usersQuery.data, // { users: [...], pagination: {...} }
     isLoading: usersQuery.isLoading,
-
     updateStatus: updateStatusMutation.mutateAsync,
     isUpdatingStatus: updateStatusMutation.isPending,
-
     updateRole: updateRoleMutation.mutateAsync,
     isUpdatingRole: updateRoleMutation.isPending,
   };

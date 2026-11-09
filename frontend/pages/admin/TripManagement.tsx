@@ -2,32 +2,36 @@ import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { tripApi, Trip } from "../../api/trip.api";
 import { cn } from "../../utils/cn";
+import { Search } from "lucide-react";
 
 export default function TripManagement() {
   const queryClient = useQueryClient();
   const [editingTrip, setEditingTrip] = useState<Trip | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-
-  // State quản lý trang hiện tại
+  const [searchText, setSearchText] = useState("");
   const [page, setPage] = useState(1);
 
-  // Form states
   const [route, setRoute] = useState("");
   const [departureAt, setDepartureAt] = useState("");
   const [price, setPrice] = useState(250000);
   const [totalSeats, setTotalSeats] = useState(30);
   const [description, setDescription] = useState("");
 
-  //  Lấy danh sách chuyến xe dành cho Admin (có phân trang)
   const { data: response, isLoading } = useQuery({
     queryKey: ["admin-trips", page],
     queryFn: () => tripApi.getAllForAdmin(page, 10),
   });
 
+  // . Khai báo trips TRƯỚC KHI lọc
   const trips = response?.data || [];
-
-  //  TÁCH RIÊNG BIẾN TOTAL PAGES ĐỂ TRÁNH LỖI TYPESCRIPT UNDEFINED
   const totalPages = response?.meta?.totalPages ?? 1;
+
+  //  Lọc dữ liệu sau khi đã có biến trips
+  const filteredTrips = trips.filter(
+    (trip) =>
+      trip.route.toLowerCase().includes(searchText.toLowerCase()) ||
+      trip.id.toString().includes(searchText),
+  );
 
   const openCreateModal = () => {
     setEditingTrip(null);
@@ -70,9 +74,7 @@ export default function TripManagement() {
       queryClient.invalidateQueries({ queryKey: ["trips", "default"] });
       setIsModalOpen(false);
     },
-    onError: (err: any) => {
-      alert(err.message || "Có lỗi xảy ra khi lưu!");
-    },
+    onError: (err: any) => alert(err.message || "Có lỗi xảy ra khi lưu!"),
   });
 
   const deleteMutation = useMutation({
@@ -81,9 +83,7 @@ export default function TripManagement() {
       queryClient.invalidateQueries({ queryKey: ["admin-trips"] });
       queryClient.invalidateQueries({ queryKey: ["trips", "default"] });
     },
-    onError: (err: any) => {
-      alert(err.message || "Không thể xoá chuyến xe này!");
-    },
+    onError: (err: any) => alert(err.message || "Không thể xoá chuyến xe này!"),
   });
 
   return (
@@ -105,6 +105,18 @@ export default function TripManagement() {
         </button>
       </div>
 
+      {/* THÊM THANH TÌM KIẾM CHUYẾN XE */}
+      <div className="relative max-w-md w-full mb-4">
+        <input
+          type="text"
+          placeholder="Tìm theo tuyến đường hoặc ID..."
+          value={searchText}
+          onChange={(e) => setSearchText(e.target.value)}
+          className="w-full rounded-xl border border-white/[0.08] bg-[#15151B] px-4 py-2.5 text-sm text-[#F5F5F7] focus:border-[#8B5CF6] focus:outline-none pl-10"
+        />
+        <Search className="absolute left-3 top-3 h-4 w-4 text-[#92929F]" />
+      </div>
+
       <div className="overflow-x-auto rounded-2xl border border-white/[0.08] bg-[#15151B]">
         <table className="w-full text-left text-sm whitespace-nowrap">
           <thead className="border-b border-white/[0.08] text-[#92929F]">
@@ -124,14 +136,14 @@ export default function TripManagement() {
                   Đang tải...
                 </td>
               </tr>
-            ) : trips.length === 0 ? (
+            ) : filteredTrips.length === 0 ? (
               <tr>
                 <td colSpan={6} className="p-8 text-center text-[#92929F]">
-                  Chưa có chuyến xe nào
+                  Không tìm thấy chuyến xe nào
                 </td>
               </tr>
             ) : (
-              trips.map((trip) => (
+              filteredTrips.map((trip) => (
                 <tr
                   key={trip.id}
                   className="hover:bg-white/[0.02] transition-colors"
@@ -184,7 +196,6 @@ export default function TripManagement() {
         </table>
       </div>
 
-      {/* NÚT PHÂN TRANG (Sử dụng biến totalPages đã tách) */}
       {!isLoading && totalPages > 1 && (
         <div className="flex items-center justify-center gap-6 mt-6 pt-6 border-t border-white/[0.08]">
           <button
@@ -214,7 +225,6 @@ export default function TripManagement() {
         </div>
       )}
 
-      {/* Modal Thêm / Cập nhật (Giữ nguyên) */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-3xl border border-white/[0.08] bg-[#15151B] p-6 shadow-2xl">
@@ -254,10 +264,12 @@ export default function TripManagement() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-[#92929F] mb-1.5">Giá vé</label>
+                  {/* SỬA LỖI BƯỚC GIÁ TẠI ĐÂY: Bỏ step 1000, cho phép nhập mọi số */}
                   <input
                     type="number"
                     min={0}
-                    step={1000}
+                    max={99999999999}
+                    step="any"
                     required
                     value={price}
                     onChange={(e) => setPrice(Number(e.target.value))}
