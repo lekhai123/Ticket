@@ -63,7 +63,14 @@ export class BookingController {
   static adminRevokeBooking = catchAsync(
     async (req: Request, res: Response) => {
       const ticketId = Number(req.params.id);
-      const revokedTicket = await BookingService.adminRevokeTicket(ticketId);
+      // Nhận lý do thu hồi từ Frontend gửi lên
+      const { reason } = req.body;
+
+      const revokedTicket = await BookingService.adminRevokeTicket(
+        ticketId,
+        reason || "Admin thu hồi vé do sự cố",
+      );
+
       return res.json({
         success: true,
         message: "Đã thu hồi vé thành công!",
@@ -71,7 +78,6 @@ export class BookingController {
       });
     },
   );
-
   static getUserTickets = catchAsync(async (req: Request, res: Response) => {
     const userIdFromToken = (req as any).user?.id || (req as any).user?.userId;
     const role = (req as any).user?.role;

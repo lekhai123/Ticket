@@ -1,11 +1,12 @@
-import React from "react";
+import React, { useState } from "react";
 import { useForm } from "react-hook-form";
 import type { SubmitHandler } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation } from "@tanstack/react-query";
-import { Gift, AlertTriangle, Users, Target } from "lucide-react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { Gift, AlertTriangle, Users, Target, Search } from "lucide-react";
 import { adminApi } from "../../api/admin.api";
+import { userApi } from "../../api/user.api"; // Import API user
 import { Input } from "../../components/ui/Input";
 import { Button } from "../../components/ui/Button";
 import { cn } from "../../utils/cn";
@@ -15,9 +16,7 @@ const massGiftSchema = z
     targetType: z.enum(["ALL", "SINGLE"]),
     targetId: z.string().optional(),
     giftType: z.enum(["MONEY", "VOUCHER"]),
-    amount: z
-      .number({ message: "Nhập số tiền" })
-      .min(1000, "Tối thiểu 1,000 VNĐ"),
+    amount: z.number({ message: "Nhập số tiền" }).min(100, "Tối thiểu 100 VNĐ"),
     batchId: z.string().min(5, "Batch ID ít nhất 5 ký tự"),
     reason: z.string().min(10, "Lý do ít nhất 10 ký tự"),
   })
@@ -25,7 +24,7 @@ const massGiftSchema = z
     (data) =>
       data.targetType !== "SINGLE" ||
       (data.targetId && data.targetId.trim() !== ""),
-    { message: "Nhập User ID", path: ["targetId"] },
+    { message: "Chọn User ID", path: ["targetId"] },
   );
 
 type MassGiftForm = z.infer<typeof massGiftSchema>;
@@ -35,6 +34,7 @@ export default function MassGift() {
     register,
     handleSubmit,
     watch,
+    setValue,
     reset,
     formState: { errors },
   } = useForm<MassGiftForm>({
@@ -50,12 +50,27 @@ export default function MassGift() {
   });
 
   const targetType = watch("targetType");
+  const [searchUser, setSearchUser] = useState("");
+  const [selectedUser, setSelectedUser] = useState<{
+    id: number;
+    email: string;
+    fullName: string;
+  } | null>(null);
+
+  // API Tìm kiếm User
+  const { data: usersData, isLoading: isSearchingUser } = useQuery({
+    queryKey: ["admin-search-user", searchUser],
+    queryFn: () => userApi.getUsers({ search: searchUser, limit: 5 }),
+    enabled: searchUser.length > 1,
+  });
 
   const giftMutation = useMutation({
     mutationFn: (data: MassGiftForm) => adminApi.massGift(data as any),
     onSuccess: (res: any) => {
       alert(`🎉 Phát quà thành công!`);
       reset();
+      setSelectedUser(null);
+      setSearchUser("");
     },
     onError: (err: any) => alert(err?.message || "Lỗi khi phát quà"),
   });
@@ -63,7 +78,7 @@ export default function MassGift() {
   const onSubmit: SubmitHandler<MassGiftForm> = (data) => {
     if (
       confirm(
-        `XÁC NHẬN PHÁT QUÀ: ${data.amount.toLocaleString()} ₫ cho ${data.targetType === "ALL" ? "TOÀN BỘ" : "User ID: " + data.targetId}?`,
+        `XÁC NHẬN PHÁT QUÀ: ${data.amount.toLocaleString()} ₫ cho ${data.targetType === "ALL" ? "TOÀN BỘ" : selectedUser?.email}?`,
       )
     ) {
       giftMutation.mutate(data);
@@ -113,6 +128,11 @@ export default function MassGift() {
                   value={type}
                   className="hidden"
                   {...register("targetType")}
+                  onChange={() => {
+                    setValue("targetType", type);
+                    setSelectedUser(null);
+                    setValue("targetId", "");
+                  }}
                 />
                 {type === "ALL" ? (
                   <Users className="h-5 w-5" />
@@ -128,16 +148,73 @@ export default function MassGift() {
         </div>
 
         {targetType === "SINGLE" && (
-          <div className="space-y-1.5">
+          <div className="space-y-1.5 relative">
             <label className="text-sm font-medium text-[#F5F5F7]">
-              User ID
+              Tìm User (Email / Tên)
             </label>
-            <Input
-              {...register("targetId")}
-              placeholder="Nhập ID (VD: 1)..."
-              error={errors.targetId?.message}
-              className="bg-[#0D0D10] border-white/[0.08] text-[#F5F5F7]"
-            />
+            {selectedUser ? (
+              <div className="flex items-center justify-between p-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10">
+                <div>
+                  <p className="text-sm text-emerald-400 font-medium">
+                    {selectedUser.fullName}
+                  </p>
+                  <p className="text-xs text-emerald-500/70">
+                    {selectedUser.email} (ID: {selectedUser.id})
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedUser(null);
+                    setValue("targetId", "");
+                  }}
+                  className="text-xs text-rose-400 hover:underline"
+                >
+                  Hủy chọn
+                </button>
+              </div>
+            ) : (
+              <>
+                <Input
+                  value={searchUser}
+                  onChange={(e) => setSearchUser(e.target.value)}
+                  placeholder="Nhập email hoặc tên user để tìm..."
+                  className="bg-[#0D0D10] border-white/[0.08] text-[#F5F5F7] pl-10"
+                />
+                <Search className="absolute left-3 top-9 h-4 w-4 text-[#92929F]" />
+                {searchUser.length > 1 && (
+                  <div className="absolute z-10 w-full mt-1 bg-[#15151B] border border-white/[0.08] rounded-xl shadow-xl overflow-hidden">
+                    {isSearchingUser ? (
+                      <p className="p-3 text-xs text-[#92929F]">Đang tìm...</p>
+                    ) : usersData?.data?.users?.length === 0 ? (
+                      <p className="p-3 text-xs text-[#92929F]">
+                        Không tìm thấy
+                      </p>
+                    ) : (
+                      usersData?.data?.users?.map((u: any) => (
+                        <div
+                          key={u.id}
+                          onClick={() => {
+                            setSelectedUser(u);
+                            setValue("targetId", String(u.id));
+                          }}
+                          className="p-3 hover:bg-white/[0.04] cursor-pointer border-b border-white/[0.04] last:border-0"
+                        >
+                          <p className="text-sm text-[#F5F5F7]">{u.fullName}</p>
+                          <p className="text-xs text-[#92929F]">
+                            {u.email} (ID: {u.id})
+                          </p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+            <input type="hidden" {...register("targetId")} />
+            {errors.targetId && (
+              <p className="text-xs text-rose-400">{errors.targetId.message}</p>
+            )}
           </div>
         )}
 
@@ -148,6 +225,7 @@ export default function MassGift() {
             </label>
             <Input
               type="number"
+              min={100}
               {...register("amount", { valueAsNumber: true })}
               error={errors.amount?.message}
               className="bg-[#0D0D10] border-white/[0.08] text-[#F5F5F7]"
