@@ -23,6 +23,7 @@ model Users {
   // THÊM MỚI: Dành cho bảo mật & Passkeys
   phoneNumber      String?   @db.Text // Sẽ được mã hóa AES-256-GCM (ALE)
   currentChallenge String?   // Lưu thử thách (challenge) tạm thời của WebAuthn
+  auditLogs     AuditLog[] 
   
   tickets     Tickets[]
   wallet      Wallets?
@@ -133,6 +134,7 @@ model AuditLog {
   isRevoked     Boolean  @default(false)
   ipAddress     String?
   createdAt     DateTime @default(now())
+  user          Users?   @relation(fields: [userId], references: [id])
 
   @@index([requestId])
   @@index([userId])
