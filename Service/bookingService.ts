@@ -7,11 +7,6 @@ import { RedisLock } from "../Utils/redisLock";
 import { MultiLevelCache } from "./cacheService";
 
 export class BookingService {
-  /**
-   * ĐẶT / GIỮ GHẾ
-   * - Fire-and-forget mail + cache → KHÔNG block response → hết timeout
-   * - Gom mail theo batch → 5 ghế = 1 mail duy nhất
-   */
   static async holdOrBookSeat(
     userId: number,
     tripId: number,
@@ -19,8 +14,12 @@ export class BookingService {
     paymentMethod: "WALLET" | "LATER" = "WALLET",
     batchId?: string,
   ) {
+    const t0 = Date.now();
+
     const lockKey = `lock:trip:${tripId}:seat:${seatNumber}`;
     const lockToken = await RedisLock.acquire(lockKey, 30);
+    const t1 = Date.now();
+
     if (!lockToken) {
       const error: any = new Error(
         `Ghế số ${seatNumber} đang có người khác thao tác chọn.`,
@@ -81,7 +80,6 @@ export class BookingService {
               error.statusCode = 400;
               throw error;
             }
-
             await tx.wallets.update({
               where: { userId },
               data: { balance: { decrement: tripPrice } },
@@ -89,6 +87,7 @@ export class BookingService {
             initialStatus = "CONFIRMED";
           }
 
+          // Include user luôn trong create → không cần query thêm để lấy email
           const newTicket = await tx.tickets.create({
             data: {
               userId,
@@ -99,6 +98,7 @@ export class BookingService {
               paidAmount: paymentMethod === "WALLET" ? tripPrice : 0,
               ...(batchId ? { batchId } : {}),
             } as any,
+            include: { user: { select: { email: true } } },
           });
 
           if (paymentMethod === "WALLET") {
@@ -128,58 +128,48 @@ export class BookingService {
         { timeout: 15000 },
       );
     } finally {
-      // Giải phóng lock NGAY sau transaction, không chờ mail/cache
       await RedisLock.release(lockKey, lockToken);
     }
+    const t2 = Date.now();
 
-    // FIRE-AND-FORGET: cache invalidation
-    void (async () => {
+    // AWAIT mail scheduling — BẮT BUỘC trên serverless
+    // Chỉ là 1 Redis write (~50–100ms), KHÔNG gửi mail thật (worker gửi)
+    if (paymentMethod === "WALLET" && result?.id && result?.user?.email) {
       try {
-        await Promise.all([
-          MultiLevelCache.invalidate(`trips:detail:${tripId}`),
-          MultiLevelCache.invalidate("trips:all:active"),
-        ]);
-      } catch (cacheErr: any) {
-        console.warn("[BOOKING] Xóa cache thất bại:", cacheErr?.message);
+        const effectiveBatchId = batchId || `SINGLE_${result.id}`;
+        await scheduleNotificationWithReset(
+          {
+            email: result.user.email,
+            type: "BOOKING_SUCCESS_BATCH",
+            data: { userId, batchId: effectiveBatchId },
+          },
+          {
+            delayMs: 10000,
+            jobId: `booking-notif:${effectiveBatchId}`,
+          },
+        );
+      } catch (mailErr: any) {
+        console.error("[BOOKING] Schedule mail error:", mailErr?.message);
       }
-    })();
-
-    // FIRE-AND-FORGET: gom mail theo batch (reset 10s mỗi lần đặt ghế)
-    if (paymentMethod === "WALLET" && result?.id) {
-      void (async () => {
-        try {
-          const user = await prisma.users.findUnique({
-            where: { id: userId },
-          });
-          if (!user) return;
-
-          const effectiveBatchId = batchId || `SINGLE_${result.id}`;
-
-          await scheduleNotificationWithReset(
-            {
-              email: user.email,
-              type: "BOOKING_SUCCESS_BATCH",
-              data: { userId, batchId: effectiveBatchId },
-            },
-            {
-              delayMs: 10000,
-              jobId: `booking-notif:${effectiveBatchId}`,
-            },
-          );
-        } catch (mailErr: any) {
-          console.warn("[BOOKING] Schedule mail lỗi:", mailErr?.message);
-        }
-      })();
     }
+    const t3 = Date.now();
+
+    // Cache invalidation — có thể để trôi, không quan trọng
+    void Promise.all([
+      MultiLevelCache.invalidate(`trips:detail:${tripId}`),
+      MultiLevelCache.invalidate("trips:all:active"),
+    ]).catch((err) =>
+      console.warn("[BOOKING] cache invalidation:", err?.message),
+    );
+
+    // ⏱️ TIMING LOG — xoá sau khi debug xong
+    console.log(
+      `[TIMING][BOOK] lock=${t1 - t0}ms tx=${t2 - t1}ms mail=${t3 - t2}ms total=${t3 - t0}ms`,
+    );
 
     return result;
   }
 
-  /**
-   * ADMIN THU HỒI VÉ LẺ
-   * - Hoàn tiền theo paidAmount (không phụ thuộc paymentMethod cũ)
-   * - Gom mail theo batchId / time-window 30s
-   */
   static async adminRevokeTicket(
     ticketId: number,
     adminUserId: number,
@@ -260,55 +250,42 @@ export class BookingService {
       return updated;
     });
 
-    // FIRE-AND-FORGET: cache
-    void (async () => {
-      try {
-        await Promise.all([
-          MultiLevelCache.invalidate(`trips:detail:${ticket.tripId}`),
-          MultiLevelCache.invalidate("trips:all:active"),
-          MultiLevelCache.invalidate(`user:${ticket.userId}:tickets*`),
-        ]);
-      } catch (cacheErr: any) {
-        console.warn("[BOOKING] Xóa cache thất bại:", cacheErr?.message);
-      }
-    })();
-
-    // FIRE-AND-FORGET: gom mail theo batch (reset 30s mỗi lần revoke)
+    // AWAIT mail scheduling
     if (ticket.user) {
-      void (async () => {
-        try {
-          const effectiveBatchId =
-            (ticket as any).batchId || `SINGLE_${ticket.id}`;
-
-          await scheduleNotificationWithReset(
-            {
-              email: ticket.user!.email,
-              type: "ADMIN_REVOKE_BATCH",
-              data: {
-                userId: ticket.userId,
-                batchId: effectiveBatchId,
-                reason,
-              },
+      try {
+        const effectiveBatchId =
+          (ticket as any).batchId || `SINGLE_${ticket.id}`;
+        await scheduleNotificationWithReset(
+          {
+            email: ticket.user.email,
+            type: "ADMIN_REVOKE_BATCH",
+            data: {
+              userId: ticket.userId,
+              batchId: effectiveBatchId,
+              reason,
             },
-            {
-              delayMs: 30000,
-              jobId: `revoke-notif:${effectiveBatchId}`,
-            },
-          );
-        } catch (mailErr: any) {
-          console.warn("[BOOKING] Schedule mail lỗi:", mailErr?.message);
-        }
-      })();
+          },
+          {
+            delayMs: 30000,
+            jobId: `revoke-notif:${effectiveBatchId}`,
+          },
+        );
+      } catch (mailErr: any) {
+        console.error("[BOOKING] Schedule revoke mail:", mailErr?.message);
+      }
     }
+
+    void Promise.all([
+      MultiLevelCache.invalidate(`trips:detail:${ticket.tripId}`),
+      MultiLevelCache.invalidate("trips:all:active"),
+      MultiLevelCache.invalidate(`user:${ticket.userId}:tickets*`),
+    ]).catch((err) =>
+      console.warn("[BOOKING] cache invalidation:", err?.message),
+    );
 
     return result;
   }
 
-  /**
-   * KHÁCH HÀNG CHỦ ĐỘNG HỦY VÉ
-   * - Hoàn đúng paidAmount (không over-refund)
-   * - Fire-and-forget mail + cache
-   */
   static async cancelTicket(userId: number, ticketId: number) {
     const ticket = await prisma.tickets.findUnique({
       where: { id: ticketId },
@@ -382,33 +359,26 @@ export class BookingService {
       return updatedTicket;
     });
 
-    // FIRE-AND-FORGET: cache
-    void (async () => {
-      try {
-        await Promise.all([
-          MultiLevelCache.invalidate(`trips:detail:${ticket.tripId}`),
-          MultiLevelCache.invalidate("trips:all:active"),
-          MultiLevelCache.invalidate(`user:${userId}:tickets*`),
-        ]);
-      } catch (cacheErr: any) {
-        console.warn("[BOOKING] Xóa cache thất bại:", cacheErr?.message);
-      }
-    })();
-
-    // FIRE-AND-FORGET: mail hủy vé (đơn lẻ — không cần gom batch)
+    // AWAIT mail (mail hủy đơn lẻ, không cần batch)
     if (ticket.user) {
-      void (async () => {
-        try {
-          await sendNotificationEmail({
-            email: ticket.user!.email,
-            type: "BOOKING_CANCEL",
-            data: { route: ticket.trip.route },
-          });
-        } catch (mailErr: any) {
-          console.warn("[BOOKING] Lỗi gửi mail hủy vé:", mailErr?.message);
-        }
-      })();
+      try {
+        await sendNotificationEmail({
+          email: ticket.user.email,
+          type: "BOOKING_CANCEL",
+          data: { route: ticket.trip.route },
+        });
+      } catch (mailErr: any) {
+        console.error("[BOOKING] Hủy vé mail error:", mailErr?.message);
+      }
     }
+
+    void Promise.all([
+      MultiLevelCache.invalidate(`trips:detail:${ticket.tripId}`),
+      MultiLevelCache.invalidate("trips:all:active"),
+      MultiLevelCache.invalidate(`user:${userId}:tickets*`),
+    ]).catch((err) =>
+      console.warn("[BOOKING] cache invalidation:", err?.message),
+    );
 
     return result;
   }
