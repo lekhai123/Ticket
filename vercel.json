@@ -15,7 +15,10 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "/api/index.ts"
+      "destination": "/api/index.ts",
+      "config": {
+        "maxDuration": 60
+      }
     },
     {
       "source": "/(.*)",

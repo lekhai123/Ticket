@@ -1,7 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import prisma from "../database/prismaClient";
 import { redisPrimary, redisBackup } from "../Utils/redisLock";
-// SỬA 1: Import thư viện gốc và 2 config thay vì 2 instance
 import { v2 as cloudinary } from "cloudinary";
 import {
   cloudinaryPrimaryConfig,
@@ -9,17 +8,13 @@ import {
 } from "../config/cloudinary";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { MultiLevelCache } from "./cacheService";
+
 export class AdminService {
-  /**
-   * Lấy số liệu thống kê tổng quan hệ thống cho Admin Dashboard
-   */
   static async getSystemStats() {
     const totalUsers = await prisma.users.count({
       where: { role: "CUSTOMER" },
     });
-
     const totalTrips = await prisma.trips.count();
-
     const totalTicketsSold = await prisma.tickets.count({
       where: { status: "CONFIRMED" },
     });
@@ -28,9 +23,7 @@ export class AdminService {
       where: { status: "CONFIRMED" },
       select: {
         createdAt: true,
-        trip: {
-          select: { price: true, route: true },
-        },
+        trip: { select: { price: true, route: true } },
       },
     });
 
@@ -51,14 +44,12 @@ export class AdminService {
     const topRoutes = Object.entries(routeMap)
       .map(([name, tickets]) => ({ name, tickets }))
       .sort((a, b) => b.tickets - a.tickets)
-      .slice(0, 5); // Chỉ lấy top 5 tuyến đường đông khách nhất
+      .slice(0, 5);
 
-    // Lấy dữ liệu biểu đồ doanh thu 7 ngày gần nhất (Dữ liệu thực tế)
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
     const revenueChartMap = new Map<string, number>();
-    // Khởi tạo 7 ngày với doanh thu 0
     for (let i = 6; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
@@ -69,7 +60,6 @@ export class AdminService {
       revenueChartMap.set(dateStr, 0);
     }
 
-    // Cộng dồn doanh thu thực tế theo ngày
     confirmedTickets.forEach((ticket) => {
       if (ticket.createdAt >= sevenDaysAgo) {
         const dateStr = new Date(ticket.createdAt).toLocaleDateString("vi-VN", {
@@ -87,10 +77,7 @@ export class AdminService {
     });
 
     const revenueChart = Array.from(revenueChartMap.entries()).map(
-      ([date, amount]) => ({
-        date,
-        amount,
-      }),
+      ([date, amount]) => ({ date, amount }),
     );
 
     return {
@@ -138,11 +125,7 @@ export class AdminService {
           fullName: true,
           role: true,
           createdAt: true,
-          wallet: {
-            select: {
-              balance: true,
-            },
-          },
+          wallet: { select: { balance: true } },
         },
         skip,
         take: limit,
@@ -153,12 +136,7 @@ export class AdminService {
 
     return {
       users,
-      pagination: {
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
-      },
+      pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
     };
   }
 
@@ -206,11 +184,7 @@ export class AdminService {
     return await prisma.$transaction(async (tx) => {
       await tx.wallets.updateMany({
         where: { userId: { in: targetUserIds } },
-        data: {
-          balance: {
-            increment: data.amount,
-          },
-        },
+        data: { balance: { increment: data.amount } },
       });
 
       const userAuditLogs = validUsers.map((u) => {
@@ -237,13 +211,10 @@ export class AdminService {
         };
       });
 
-      // Chia nhỏ mảng để tránh vượt quá giới hạn tham số của PostgreSQL (65,535 params)
       const CHUNK_SIZE = 1000;
       for (let i = 0; i < userAuditLogs.length; i += CHUNK_SIZE) {
         const chunk = userAuditLogs.slice(i, i + CHUNK_SIZE);
-        await tx.auditLog.createMany({
-          data: chunk,
-        });
+        await tx.auditLog.createMany({ data: chunk });
       }
 
       await tx.auditLog.create({
@@ -288,15 +259,9 @@ export class AdminService {
 
     const whereCondition: any = {};
 
-    if (params.batchId) {
-      whereCondition.batchId = params.batchId;
-    }
-    if (params.action) {
-      whereCondition.action = params.action;
-    }
-    if (params.userId) {
-      whereCondition.userId = params.userId;
-    }
+    if (params.batchId) whereCondition.batchId = params.batchId;
+    if (params.action) whereCondition.action = params.action;
+    if (params.userId) whereCondition.userId = params.userId;
 
     if (!params.userId && !params.action) {
       whereCondition.action = {
@@ -316,19 +281,11 @@ export class AdminService {
 
     return {
       logs,
-      pagination: {
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
-      },
+      pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
     };
   }
 
   static async getHealthStatus() {
-    const startTime = Date.now();
-
-    // 1. Check PostgreSQL
     let dbLatency = "N/A";
     let dbStatus = "HEALTHY";
     try {
@@ -339,7 +296,6 @@ export class AdminService {
       dbStatus = "DOWN";
     }
 
-    // 2. Check Redis
     let redisPrimaryLatency = "N/A";
     let redisPrimaryStatus = "HEALTHY";
     try {
@@ -364,12 +320,10 @@ export class AdminService {
       redisBackupStatus = "UNCONFIGURED";
     }
 
-    // 3. Check Cloudinary
     let cloudPrimaryStatus = "HEALTHY";
     let cloudPrimaryLatency = "N/A";
     try {
       const start = Date.now();
-      // SỬA 2: Dùng thư viện gốc và truyền config vào
       await cloudinary.api.ping(cloudinaryPrimaryConfig);
       cloudPrimaryLatency = `${Date.now() - start}ms`;
     } catch (error) {
@@ -380,7 +334,6 @@ export class AdminService {
     let cloudBackupLatency = "N/A";
     try {
       const start = Date.now();
-      // SỬA 3: Dùng thư viện gốc và truyền config vào
       await cloudinary.api.ping(cloudinaryBackupConfig);
       cloudBackupLatency = `${Date.now() - start}ms`;
     } catch (error) {
