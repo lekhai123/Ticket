@@ -101,20 +101,17 @@ export default function Booking() {
       alert(`Thanh toán thành công ${selectedSeats.length} vé từ Ví!`);
       navigate("/customer/wallet");
     } catch (err: any) {
-      const errResponse = err.response?.data;
-      if (
-        err.response?.status === 403 ||
-        errResponse?.code === "WALLET_LOCKED_OR_DEBT"
-      ) {
+      // ✅ SỬA: axiosClient mới trả về object trực tiếp, không bọc trong err.response.data
+      if (err.status === 403 || err.code === "WALLET_LOCKED_OR_DEBT") {
         setLockedWalletModal({
           isOpen: true,
           message:
-            errResponse?.message ||
+            err.message ||
             "Ví đang bị khóa do dính chênh lệch tài chính/ghi nợ âm.",
         });
         return;
       }
-      alert(errResponse?.message || err.message || "Thanh toán thất bại.");
+      alert(err.message || "Thanh toán thất bại.");
     }
   };
 
