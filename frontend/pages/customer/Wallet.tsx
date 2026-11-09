@@ -158,7 +158,7 @@ export default function Wallet() {
             </h3>
             <Input
               type="number"
-              placeholder="Nhập số tiền (VNĐ)..."
+              placeholder="Nhập số tiền > 10000(VNĐ)"
               value={topUpAmount}
               onChange={(e) => setTopUpAmount(e.target.value)}
               className="mb-4 bg-[#0D0D10] border-white/[0.08] text-[#F5F5F7]"
