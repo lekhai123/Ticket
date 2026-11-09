@@ -87,7 +87,6 @@ export class BookingService {
             initialStatus = "CONFIRMED";
           }
 
-          // Include user luôn trong create → không cần query thêm để lấy email
           const newTicket = await tx.tickets.create({
             data: {
               userId,
@@ -132,8 +131,6 @@ export class BookingService {
     }
     const t2 = Date.now();
 
-    // AWAIT mail scheduling — BẮT BUỘC trên serverless
-    // Chỉ là 1 Redis write (~50–100ms), KHÔNG gửi mail thật (worker gửi)
     if (paymentMethod === "WALLET" && result?.id && result?.user?.email) {
       try {
         const effectiveBatchId = batchId || `SINGLE_${result.id}`;
@@ -145,7 +142,7 @@ export class BookingService {
           },
           {
             delayMs: 10000,
-            jobId: `booking-notif-${effectiveBatchId}`, //  SỬA DẤU : THÀNH -
+            jobId: `booking-notif-${effectiveBatchId}`,
           },
         );
       } catch (mailErr: any) {
@@ -154,7 +151,6 @@ export class BookingService {
     }
     const t3 = Date.now();
 
-    // Cache invalidation — có thể để trôi, không quan trọng
     void Promise.all([
       MultiLevelCache.invalidate(`trips:detail:${tripId}`),
       MultiLevelCache.invalidate("trips:all:active"),
@@ -162,12 +158,191 @@ export class BookingService {
       console.warn("[BOOKING] cache invalidation:", err?.message),
     );
 
-    // ⏱️ TIMING LOG — xoá sau khi debug xong
     console.log(
       `[TIMING][BOOK] lock=${t1 - t0}ms tx=${t2 - t1}ms mail=${t3 - t2}ms total=${t3 - t0}ms`,
     );
 
     return result;
+  }
+
+  static async bookMultipleSeats(
+    userId: number,
+    tripId: number,
+    seatNumbers: number[],
+    paymentMethod: "WALLET" | "LATER" = "WALLET",
+    batchId?: string,
+  ) {
+    const t0 = Date.now();
+
+    if (!seatNumbers || seatNumbers.length === 0) {
+      const error: any = new Error("Vui lòng chọn ít nhất 1 ghế!");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const sortedSeats = [...seatNumbers].sort((a, b) => a - b);
+    const lockKey = `lock:trip:${tripId}`;
+    const lockToken = await RedisLock.acquire(lockKey, 30);
+    const t1 = Date.now();
+
+    if (!lockToken) {
+      const error: any = new Error("Hệ thống đang bận, vui lòng thử lại sau!");
+      error.statusCode = 409;
+      throw error;
+    }
+
+    let resultTickets: any[] = [];
+    const effectiveBatchId = batchId || `BATCH_${Date.now()}`;
+
+    try {
+      resultTickets = await prisma.$transaction(
+        async (tx) => {
+          await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`trip:${tripId}`}))::text`;
+
+          const existingTickets = await tx.tickets.findMany({
+            where: {
+              tripId,
+              seatNumber: { in: sortedSeats },
+              status: { in: ["HELD", "PENDING", "CONFIRMED"] },
+            },
+          });
+
+          if (existingTickets.length > 0) {
+            const takenSeats = existingTickets
+              .map((t) => t.seatNumber)
+              .join(", ");
+            const error: any = new Error(
+              `Các ghế sau đã có người đặt: ${takenSeats}`,
+            );
+            error.statusCode = 400;
+            throw error;
+          }
+
+          const trip = await tx.trips.findUnique({ where: { id: tripId } });
+          if (!trip) {
+            const error: any = new Error("Chuyến xe không tồn tại!");
+            error.statusCode = 404;
+            throw error;
+          }
+
+          const tripPrice = Number(trip.price);
+          const totalPrice = tripPrice * sortedSeats.length;
+
+          let currentBalance = 0;
+          let walletId = userId;
+          let initialStatus: "PENDING" | "CONFIRMED" = "PENDING";
+
+          if (paymentMethod === "WALLET") {
+            const wallet = await tx.wallets.findUnique({ where: { userId } });
+            if (!wallet || wallet.isLocked) {
+              const error: any = new Error(
+                "Ví của bạn đang bị khóa do vi phạm hoặc chờ đối soát. Vui lòng liên hệ Admin!",
+              );
+              error.statusCode = 403;
+              throw error;
+            }
+            currentBalance = Number(wallet.balance || 0);
+            walletId = wallet.id;
+
+            if (currentBalance < totalPrice) {
+              const error: any = new Error(
+                "Số dư ví không đủ để thanh toán các vé này!",
+              );
+              error.statusCode = 400;
+              throw error;
+            }
+
+            await tx.wallets.update({
+              where: { userId },
+              data: { balance: { decrement: totalPrice } },
+            });
+            initialStatus = "CONFIRMED";
+          }
+
+          const ticketData = sortedSeats.map((seat) => ({
+            userId,
+            tripId,
+            seatNumber: seat,
+            status: initialStatus,
+            paymentMethod: paymentMethod === "WALLET" ? "WALLET" : "LATER",
+            paidAmount: paymentMethod === "WALLET" ? tripPrice : 0,
+            batchId: effectiveBatchId,
+          }));
+
+          await tx.tickets.createMany({ data: ticketData as any });
+
+          const newTickets = await tx.tickets.findMany({
+            where: { batchId: effectiveBatchId, userId, tripId },
+            include: { user: { select: { email: true } } },
+          });
+
+          if (paymentMethod === "WALLET") {
+            await tx.auditLog.create({
+              data: {
+                requestId: `BOOK_TICKET_BATCH_${Date.now()}`,
+                batchId: effectiveBatchId,
+                userId,
+                action: "BOOK_TICKET_PAYMENT",
+                resource: "Wallets",
+                resourceId: String(walletId),
+                oldData: { balance: currentBalance },
+                newData: {
+                  amount: -totalPrice,
+                  description: `Thanh toán ${sortedSeats.length} vé chuyến ${trip.route} (Ghế: ${sortedSeats.join(", ")})`,
+                  newBalance: currentBalance - totalPrice,
+                  tripId,
+                  seats: sortedSeats,
+                  ticketIds: newTickets.map((t) => t.id),
+                },
+              },
+            });
+          }
+
+          return newTickets;
+        },
+        { timeout: 20000 },
+      );
+    } finally {
+      await RedisLock.release(lockKey, lockToken);
+    }
+    const t2 = Date.now();
+
+    if (
+      paymentMethod === "WALLET" &&
+      resultTickets.length > 0 &&
+      resultTickets[0].user?.email
+    ) {
+      try {
+        const email = resultTickets[0].user.email;
+        await scheduleNotificationWithReset(
+          {
+            email,
+            type: "BOOKING_SUCCESS_BATCH",
+            data: { userId, batchId: effectiveBatchId },
+          },
+          {
+            delayMs: 10000,
+            jobId: `booking-notif-${effectiveBatchId}`,
+          },
+        );
+      } catch (mailErr: any) {
+        console.error("[BOOKING] Schedule mail error:", mailErr?.message);
+      }
+    }
+    const t3 = Date.now();
+
+    void Promise.all([
+      MultiLevelCache.invalidate(`trips:detail:${tripId}`),
+      MultiLevelCache.invalidate("trips:all:active"),
+    ]).catch((err) =>
+      console.warn("[BOOKING] cache invalidation:", err?.message),
+    );
+
+    console.log(
+      `[TIMING][BULK_BOOK] lock=${t1 - t0}ms tx=${t2 - t1}ms mail=${t3 - t2}ms total=${t3 - t0}ms`,
+    );
+
+    return resultTickets;
   }
 
   static async adminRevokeTicket(
@@ -250,7 +425,6 @@ export class BookingService {
       return updated;
     });
 
-    // AWAIT mail scheduling
     if (ticket.user) {
       try {
         const effectiveBatchId =
@@ -267,7 +441,7 @@ export class BookingService {
           },
           {
             delayMs: 30000,
-            jobId: `revoke-notif-${effectiveBatchId}`, // SỬA DẤU : THÀNH -
+            jobId: `revoke-notif-${effectiveBatchId}`,
           },
         );
       } catch (mailErr: any) {
@@ -359,7 +533,6 @@ export class BookingService {
       return updatedTicket;
     });
 
-    // AWAIT mail (mail hủy đơn lẻ, không cần batch)
     if (ticket.user) {
       try {
         await sendNotificationEmail({

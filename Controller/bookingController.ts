@@ -11,7 +11,6 @@ const catchAsync = (
 };
 
 export class BookingController {
-  // 1. Đặt vé
   static createBooking = catchAsync(async (req: Request, res: Response) => {
     const userId = (req as any).user?.id || (req as any).user?.userId;
     if (!userId) {
@@ -20,35 +19,34 @@ export class BookingController {
         .json({ success: false, message: "Chưa đăng nhập!" });
     }
 
-    const { tripId, seatNumber, seatNumbers, paymentMethod } = req.body;
-    // Xử lý cả trường hợp FE gửi 1 ghế (seatNumber) hoặc mảng nhiều ghế (seatNumbers)
-    const seatsToBook = seatNumbers || (seatNumber ? [seatNumber] : []);
+    const { tripId, seatNumber, seatNumbers, paymentMethod, batchId } =
+      req.body;
 
-    if (!seatsToBook || seatsToBook.length === 0) {
+    const seatsToBook: number[] = (
+      seatNumbers || (seatNumber ? [seatNumber] : [])
+    ).map(Number);
+
+    if (seatsToBook.length === 0) {
       return res
         .status(400)
         .json({ success: false, message: "Vui lòng chọn ghế!" });
     }
 
-    const results = [];
-    for (const seat of seatsToBook) {
-      const ticket = await BookingService.holdOrBookSeat(
-        Number(userId),
-        Number(tripId),
-        Number(seat),
-        paymentMethod || "WALLET",
-      );
-      results.push(ticket);
-    }
+    const results = await BookingService.bookMultipleSeats(
+      Number(userId),
+      Number(tripId),
+      seatsToBook,
+      paymentMethod || "WALLET",
+      batchId,
+    );
 
     return res.status(201).json({
       success: true,
-      message: "Đặt vé thành công!",
+      message: `Đặt thành công ${seatsToBook.length} vé!`,
       data: results.length === 1 ? results[0] : results,
     });
   });
 
-  // 2. Khách hàng tự hủy vé
   static cancelBooking = catchAsync(async (req: Request, res: Response) => {
     const userId = (req as any).user?.id || (req as any).user?.userId;
     const ticketId = Number(req.params.id);
@@ -68,13 +66,11 @@ export class BookingController {
     });
   });
 
-  // 3. Lấy danh sách vé (Có phân trang)
   static getUserTickets = catchAsync(async (req: Request, res: Response) => {
     const userIdFromToken = (req as any).user?.id || (req as any).user?.userId;
     const role = (req as any).user?.role;
 
     let targetUserId = Number(userIdFromToken);
-    // Nếu là ADMIN và có truyền userId trên URL thì lấy ID đó
     if (role === "ADMIN" && req.params.userId) {
       targetUserId = Number(req.params.userId);
     }
@@ -112,7 +108,6 @@ export class BookingController {
     });
   });
 
-  // 4. (Dự phòng) Admin thu hồi vé lẻ thông qua BookingController
   static adminRevokeBooking = catchAsync(
     async (req: Request, res: Response) => {
       const ticketId = Number(req.params.id);

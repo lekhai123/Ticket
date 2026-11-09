@@ -109,17 +109,19 @@ export default function Booking() {
     if (!canAfford || selectedSeats.length === 0 || !id) return;
 
     try {
+      const batchId = crypto.randomUUID();
       await bookTicket({
         tripId: Number(id),
         seatNumbers: selectedSeats,
         paymentMethod: "WALLET",
+        batchId: batchId,
       } as any);
+
       queryClient.invalidateQueries({ queryKey: ["trip", id] });
       queryClient.invalidateQueries({ queryKey: ["wallet"] });
       alert(`Thanh toán thành công ${selectedSeats.length} vé từ Ví!`);
       navigate("/customer/wallet");
     } catch (err: any) {
-      // ✅ SỬA LẠI: AxiosClient mới trả về err.status và err.message trực tiếp
       if (err.status === 403 || err.code === "WALLET_LOCKED_OR_DEBT") {
         setLockedWalletModal({
           isOpen: true,

@@ -75,6 +75,7 @@ model Tickets {
   userId        Int
   tripId        Int
   seatNumber    Int
+  batchId       String?
   status        TicketStatus @default(PENDING)
   createdAt     DateTime     @default(now())
 
