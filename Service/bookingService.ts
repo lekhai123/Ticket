@@ -11,6 +11,7 @@ export class BookingService {
     tripId: number,
     seatNumber: number,
     paymentMethod: "WALLET" | "LATER" = "WALLET",
+    batchId?: string, // ✅ Thêm tham số batchId (nếu có)
   ) {
     const lockKey = `lock:trip:${tripId}:seat:${seatNumber}`;
     const lockToken = await RedisLock.acquire(lockKey, 30);
@@ -51,11 +52,14 @@ export class BookingService {
           }
 
           let initialStatus: "HELD" | "PENDING" | "CONFIRMED" = "PENDING";
+          let currentBalance = 0;
+          let tripPrice = Number(trip.price);
+          let walletId = userId;
 
           if (paymentMethod === "WALLET") {
             const wallet = await tx.wallets.findUnique({ where: { userId } });
-            const currentBalance = Number(wallet?.balance || 0);
-            const tripPrice = Number(trip.price);
+            currentBalance = Number(wallet?.balance || 0);
+            walletId = wallet?.id || userId;
 
             if (currentBalance < tripPrice) {
               const error: any = new Error(
@@ -70,28 +74,39 @@ export class BookingService {
               data: { balance: { decrement: tripPrice } },
             });
 
+            initialStatus = "CONFIRMED";
+          }
+
+          // 1. Tạo vé trước để lấy ID (nếu cần)
+          const newTicket = await tx.tickets.create({
+            data: { userId, tripId, seatNumber, status: initialStatus },
+          });
+
+          // 2. Ghi log thanh toán (Bổ sung batchId, tripId, seats)
+          if (paymentMethod === "WALLET") {
             await tx.auditLog.create({
               data: {
                 requestId: `BOOK_TICKET_${Date.now()}`,
+                batchId: batchId || `BOOK_BATCH_${Date.now()}`, // ✅ Đã có batchId
                 userId,
                 action: "BOOK_TICKET_PAYMENT",
                 resource: "Wallets",
-                resourceId: String(wallet?.id || userId),
+                resourceId: String(walletId),
                 oldData: { balance: currentBalance },
                 newData: {
                   amount: -tripPrice,
                   description: `Thanh toán vé chuyến ${trip.route} (Ghế A${seatNumber})`,
                   newBalance: currentBalance - tripPrice,
+                  // ✅ BỔ SUNG CÁC TRƯỜNG NÀY ĐỂ REVOKE BATCH HOẠT ĐỘNG
+                  tripId: tripId,
+                  seats: [seatNumber],
+                  ticketId: newTicket.id,
                 },
               },
             });
-
-            initialStatus = "CONFIRMED";
           }
 
-          return tx.tickets.create({
-            data: { userId, tripId, seatNumber, status: initialStatus },
-          });
+          return newTicket;
         },
         { timeout: 25000 },
       );
