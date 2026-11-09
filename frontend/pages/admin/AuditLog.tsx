@@ -1,5 +1,12 @@
 import React, { useState } from "react";
-import { ChevronDown, ChevronRight, FileJson } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  FileJson,
+  ShieldAlert,
+  User,
+  Bot,
+} from "lucide-react";
 import { useAuditLogs } from "../../hooks/useAudit";
 import { Input } from "../../components/ui/Input";
 import { formatDate } from "../../utils/format";
@@ -22,15 +29,17 @@ export default function AuditLog() {
           Audit Logs
         </h1>
         <p className="text-sm text-[#92929F] mt-1">
-          Truy vết mọi biến động dữ liệu.
+          Truy vết mọi biến động dữ liệu và tài chính.
         </p>
       </div>
 
       <div className="flex gap-4">
         <Input
           value={search}
-          onChange={(e: any) => setSearch(e.target?.value ?? e)}
-          placeholder="Tìm Request ID, Batch ID..."
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+            setSearch(e.target.value)
+          }
+          placeholder="Tìm theo Action, Batch ID, Email..."
           className="max-w-md bg-[#15151B] border-white/[0.08] text-[#F5F5F7]"
         />
       </div>
@@ -42,90 +51,132 @@ export default function AuditLog() {
               <th className="w-10 px-4 py-3 font-medium"></th>
               <th className="px-4 py-3 font-medium">Thời gian</th>
               <th className="px-4 py-3 font-medium">Hành động</th>
-              <th className="px-4 py-3 font-medium">User ID</th>
+              <th className="px-4 py-3 font-medium">Đối tượng tác động</th>
+              <th className="px-4 py-3 font-medium">Người thực hiện</th>
               <th className="px-4 py-3 font-medium">Batch/Request</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-white/[0.04]">
             {isLoading ? (
               <tr>
-                <td colSpan={5} className="text-center py-10 text-[#92929F]">
+                <td colSpan={6} className="text-center py-10 text-[#92929F]">
                   Đang tải...
                 </td>
               </tr>
             ) : logsList.length === 0 ? (
               <tr>
-                <td colSpan={5} className="text-center py-10 text-[#92929F]">
+                <td colSpan={6} className="text-center py-10 text-[#92929F]">
                   Không có lịch sử.
                 </td>
               </tr>
             ) : (
-              logsList.map((log: any) => (
-                <React.Fragment key={log.id}>
-                  <tr
-                    onClick={() =>
-                      setExpandedRow(expandedRow === log.id ? null : log.id)
-                    }
-                    className="cursor-pointer hover:bg-white/[0.02] transition-colors"
-                  >
-                    <td className="px-4 py-3 text-[#92929F]">
-                      {expandedRow === log.id ? (
-                        <ChevronDown className="h-4 w-4" />
-                      ) : (
-                        <ChevronRight className="h-4 w-4" />
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-[#F5F5F7]">
-                      {formatDate(log.createdAt)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="rounded-md bg-[#8B5CF6]/10 border border-[#8B5CF6]/20 px-2 py-0.5 text-xs font-medium text-[#8B5CF6]">
-                        {log.action}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 font-mono text-[#92929F]">
-                      {log.userId}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-col">
-                        <span className="text-xs font-medium text-amber-400">
-                          {log.batchId || "-"}
+              logsList.map((log: any) => {
+                // Lấy tên hiển thị của User (nếu có) hoặc fallback về ID
+                const userName =
+                  log.user?.fullName || log.user?.email || `ID: ${log.userId}`;
+
+                // Lấy thông tin người thực hiện (Admin) từ trong newData (nếu có)
+                const adminId = log.newData?.performedByAdminId;
+                const isSystemAction =
+                  !adminId ||
+                  String(log.action).startsWith("SYSTEM_") ||
+                  String(log.action).startsWith("AIOPS_");
+
+                return (
+                  <React.Fragment key={log.id}>
+                    <tr
+                      onClick={() =>
+                        setExpandedRow(expandedRow === log.id ? null : log.id)
+                      }
+                      className="cursor-pointer hover:bg-white/[0.02] transition-colors"
+                    >
+                      <td className="px-4 py-3 text-[#92929F]">
+                        {expandedRow === log.id ? (
+                          <ChevronDown className="h-4 w-4" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4" />
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-[#F5F5F7]">
+                        {formatDate(log.createdAt)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="rounded-md bg-[#8B5CF6]/10 border border-[#8B5CF6]/20 px-2 py-0.5 text-xs font-medium text-[#8B5CF6]">
+                          {log.action}
                         </span>
-                        <span className="text-[10px] text-[#92929F] font-mono">
-                          {log.requestId}
-                        </span>
-                      </div>
-                    </td>
-                  </tr>
-                  {expandedRow === log.id && (
-                    <tr>
-                      <td
-                        colSpan={5}
-                        className="bg-[#0D0D10] px-6 py-4 border-b border-white/[0.04]"
-                      >
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="rounded-xl border border-white/[0.08] bg-[#15151B] p-3">
-                            <div className="mb-2 flex text-xs font-medium text-[#92929F] uppercase tracking-wider">
-                              <FileJson className="h-4 w-4 mr-2" /> Old Data
-                            </div>
-                            <pre className="text-xs text-rose-400 overflow-x-auto font-mono custom-scrollbar">
-                              {JSON.stringify(log.oldData, null, 2)}
-                            </pre>
-                          </div>
-                          <div className="rounded-xl border border-white/[0.08] bg-[#15151B] p-3">
-                            <div className="mb-2 flex text-xs font-medium text-[#92929F] uppercase tracking-wider">
-                              <FileJson className="h-4 w-4 mr-2" /> New Data
-                            </div>
-                            <pre className="text-xs text-emerald-400 overflow-x-auto font-mono custom-scrollbar">
-                              {JSON.stringify(log.newData, null, 2)}
-                            </pre>
-                          </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        {/* Hiển thị Tên & Email của User */}
+                        <div className="flex flex-col">
+                          <span className="text-sm font-medium text-[#F5F5F7] flex items-center gap-1.5">
+                            <User className="h-3 w-3 text-[#92929F]" />
+                            {log.user?.fullName || "Khách vãng lai"}
+                          </span>
+                          {log.user?.email && (
+                            <span className="text-xs text-[#92929F]">
+                              {log.user.email}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        {/* Hiển thị Admin hoặc Hệ thống */}
+                        {isSystemAction ? (
+                          <span className="flex items-center gap-1.5 text-xs font-medium text-amber-400">
+                            <Bot className="h-3.5 w-3.5" /> Hệ thống tự động
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1.5 text-xs font-medium text-rose-400">
+                            <ShieldAlert className="h-3.5 w-3.5" /> Admin #
+                            {adminId}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-col">
+                          <span className="text-xs font-medium text-amber-400">
+                            {log.batchId || "-"}
+                          </span>
+                          <span className="text-[10px] text-[#92929F] font-mono">
+                            {log.requestId}
+                          </span>
                         </div>
                       </td>
                     </tr>
-                  )}
-                </React.Fragment>
-              ))
+                    {expandedRow === log.id && (
+                      <tr>
+                        <td
+                          colSpan={6}
+                          className="bg-[#0D0D10] px-6 py-4 border-b border-white/[0.04]"
+                        >
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="rounded-xl border border-white/[0.08] bg-[#15151B] p-3">
+                              <div className="mb-2 flex text-xs font-medium text-[#92929F] uppercase tracking-wider">
+                                <FileJson className="h-4 w-4 mr-2" /> Old Data
+                              </div>
+                              <pre className="text-xs text-rose-400 overflow-x-auto font-mono custom-scrollbar">
+                                {log.oldData
+                                  ? JSON.stringify(log.oldData, null, 2)
+                                  : "null"}
+                              </pre>
+                            </div>
+                            <div className="rounded-xl border border-white/[0.08] bg-[#15151B] p-3">
+                              <div className="mb-2 flex text-xs font-medium text-[#92929F] uppercase tracking-wider">
+                                <FileJson className="h-4 w-4 mr-2" /> New Data
+                              </div>
+                              <pre className="text-xs text-emerald-400 overflow-x-auto font-mono custom-scrollbar">
+                                {log.newData
+                                  ? JSON.stringify(log.newData, null, 2)
+                                  : "null"}
+                              </pre>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })
             )}
           </tbody>
         </table>
