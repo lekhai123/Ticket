@@ -8,7 +8,7 @@ import { MailJobData, NotificationJobData, AllJobData } from "./mailQueue";
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
-const fromEmail = process.env.RESEND_FROM_EMAIL;
+const fromEmail = process.env.fromEmail;
 const isTls = redisUrl.startsWith("rediss://");
 
 const redisConnection = new Redis(redisUrl, {
