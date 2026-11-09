@@ -368,7 +368,7 @@ export class AdminService {
         try {
           const start = Date.now();
           const genAI = new GoogleGenerativeAI(backupKey);
-          const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+          const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
           await model.countTokens("ping");
           geminiHealth.backup.latency = `${Date.now() - start}ms`;
         } catch (error) {
