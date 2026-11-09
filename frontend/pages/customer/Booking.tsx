@@ -89,7 +89,25 @@ export default function Booking() {
   const canAfford = rawBalance >= totalPrice && !isWalletLocked && !isDebt;
 
   const handleConfirmBooking = async () => {
+    if (isWalletLocked) {
+      setLockedWalletModal({
+        isOpen: true,
+        message:
+          "Ví của bạn đang bị khóa do vi phạm hoặc chờ đối soát. Vui lòng liên hệ Admin để được hỗ trợ!",
+      });
+      return;
+    }
+    if (isDebt) {
+      setLockedWalletModal({
+        isOpen: true,
+        message:
+          "Ví của bạn đang âm tiền. Vui lòng nạp thêm tiền để tiếp tục thanh toán!",
+      });
+      return;
+    }
+
     if (!canAfford || selectedSeats.length === 0 || !id) return;
+
     try {
       await bookTicket({
         tripId: Number(id),
@@ -258,7 +276,10 @@ export default function Booking() {
               (isWalletLocked || isDebt) &&
                 "bg-rose-600 hover:bg-rose-700 text-white",
             )}
-            disabled={selectedSeats.length === 0 || !canAfford}
+            disabled={
+              selectedSeats.length === 0 ||
+              (!canAfford && !isWalletLocked && !isDebt)
+            }
             isLoading={isBooking}
             onClick={handleConfirmBooking}
           >

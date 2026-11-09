@@ -6,6 +6,7 @@ import {
   ArrowUpFromLine,
   Loader2,
   CreditCard,
+  AlertTriangle, // ✅ Thêm icon cảnh báo
 } from "lucide-react";
 import { useAuthStore } from "../../store/authStore";
 import { useWallet } from "../../hooks/useWallet";
@@ -22,18 +23,19 @@ export default function Wallet() {
   const [topUpAmount, setTopUpAmount] = useState("");
   const [isCreatingPayOS, setIsCreatingPayOS] = useState(false);
 
+  // ✅ Lấy trạng thái khóa ví từ object balance
+  const isLocked = (balance as any)?.isLocked;
+
   const { data: txData, isLoading: isTxLoading } = useQuery({
     queryKey: ["wallet", "transactions", user?.id],
     queryFn: () =>
       walletApi.getTransactions(user!.id).then((res: any) => res.data),
     enabled: !!user?.id,
-    staleTime: 0, // Luôn fetch mới
-    refetchOnWindowFocus: true, // Fetch lại khi quay lại tab
+    staleTime: 0,
+    refetchOnWindowFocus: true,
   });
 
   const transactionList = txData?.transactions || txData || [];
-
-  //  Đã xóa hàm handleTopUp thủ công
 
   const handlePayOS = async () => {
     const amount = Number(topUpAmount);
@@ -128,6 +130,22 @@ export default function Wallet() {
       <h1 className="text-2xl font-semibold tracking-tight mb-8 text-[#F5F5F7]">
         Ví điện tử
       </h1>
+
+      {/* ✅ BANNER CẢNH BÁO KHI VÍ BỊ KHÓA */}
+      {isLocked && (
+        <div className="mb-6 rounded-2xl border border-rose-500/20 bg-rose-500/10 p-4 flex gap-3 text-rose-400">
+          <AlertTriangle className="h-5 w-5 flex-shrink-0" />
+          <div>
+            <h3 className="font-semibold text-sm">Ví của bạn đang bị khóa!</h3>
+            <p className="text-xs mt-1 text-rose-300">
+              Ví bị tạm khóa do phát hiện bất thường về số dư hoặc vi phạm điều
+              khoản. Bạn không thể nạp tiền hoặc thanh toán lúc này. Vui lòng
+              liên hệ Admin để được hỗ trợ.
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-1 space-y-6">
           <div className="relative h-48 w-full overflow-hidden rounded-3xl bg-gradient-to-br from-[#15151B] to-[#0D0D10] border border-white/[0.08] p-6">
@@ -137,7 +155,12 @@ export default function Wallet() {
                 <span className="text-sm font-medium text-[#92929F] uppercase tracking-wider">
                   {user?.fullName}
                 </span>
-                <WalletIcon className="h-6 w-6 text-[#8B5CF6]" />
+                <WalletIcon
+                  className={cn(
+                    "h-6 w-6",
+                    isLocked ? "text-rose-500" : "text-[#8B5CF6]",
+                  )}
+                />
               </div>
               <div>
                 <p className="text-sm font-medium text-[#92929F] mb-1">
@@ -146,7 +169,12 @@ export default function Wallet() {
                 {isLoadingBalance ? (
                   <div className="h-10 w-32 bg-white/[0.04] animate-pulse rounded-lg" />
                 ) : (
-                  <p className="text-3xl font-semibold tracking-tight text-[#F5F5F7]">
+                  <p
+                    className={cn(
+                      "text-3xl font-semibold tracking-tight",
+                      isLocked ? "text-rose-400" : "text-[#F5F5F7]",
+                    )}
+                  >
                     {displayBalance}
                   </p>
                 )}
@@ -164,18 +192,27 @@ export default function Wallet() {
               value={topUpAmount}
               onChange={(e) => setTopUpAmount(e.target.value)}
               className="mb-4 bg-[#0D0D10] border-white/[0.08] text-[#F5F5F7]"
+              disabled={isLocked} // ✅ Khóa ô nhập tiền nếu ví bị khóa
             />
 
             <Button
               type="button"
               onClick={handlePayOS}
               isLoading={isCreatingPayOS}
-              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center gap-2"
+              disabled={isLocked} // ✅ Khóa nút nạp tiền nếu ví bị khóa
+              className={cn(
+                "w-full flex items-center justify-center gap-2",
+                isLocked
+                  ? "bg-zinc-800 text-zinc-500 cursor-not-allowed"
+                  : "bg-emerald-600 hover:bg-emerald-700 text-white",
+              )}
             >
-              <CreditCard className="h-4 w-4" /> Thanh toán qua PayOS
+              <CreditCard className="h-4 w-4" />
+              {isLocked ? "Ví Đang Bị Khóa" : "Thanh toán qua PayOS"}
             </Button>
           </div>
         </div>
+
         {/* Lịch sử (Giữ nguyên) */}
         <div className="lg:col-span-2 rounded-3xl border border-white/[0.08] bg-[#15151B] p-6">
           <h2 className="text-lg font-medium mb-6 text-[#F5F5F7]">

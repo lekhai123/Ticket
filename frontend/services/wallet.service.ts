@@ -5,9 +5,11 @@ export const walletService = {
   getFormattedBalance: async (userId: number) => {
     const response = await walletApi.getBalance(userId);
     const balance = response.data.balance;
+    const isLocked = (response.data as any).isLocked; // Lấy trạng thái khóa
 
     return {
       raw: balance,
+      isLocked: isLocked, // Phải có trường này
       formatted: new Intl.NumberFormat("vi-VN", {
         style: "currency",
         currency: "VND",
