@@ -26,7 +26,11 @@ export class TripController {
   });
 
   static getAllTrips = catchAsync(async (req: Request, res: Response) => {
-    const trips = await TripService.getAllTripsLogic();
+    // Lấy page và limit từ URL. Nếu không truyền, mặc định page = 1, limit = 12
+    const page = req.query.page ? Number(req.query.page) : 1;
+    const limit = req.query.limit ? Number(req.query.limit) : 12;
+
+    const trips = await TripService.getAllTripsLogic(page, limit);
     res.status(200).json({ success: true, data: trips });
   });
 
