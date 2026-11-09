@@ -74,7 +74,6 @@ axiosClient.interceptors.response.use(
     const errorData = error.response?.data || {};
     const errorMessage =
       errorData.message || error.message || "Đã có lỗi xảy ra";
-
     return Promise.reject({
       ...errorData,
       status: error.response?.status,
