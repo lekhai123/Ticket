@@ -72,7 +72,6 @@ export default function AuditLog() {
               logsList.map((log: any) => {
                 const action = String(log.action);
 
-                // 1. Phân loại hành động
                 const isMassGift = action === "MASS_GIFT_EXECUTE";
                 const isSystemAction =
                   action.startsWith("SYSTEM_") || action.startsWith("AIOPS_");
@@ -81,17 +80,24 @@ export default function AuditLog() {
                   action.startsWith("ADMIN_") ||
                   action.startsWith("BATCH_");
 
-                // 2. Xác định Đối tượng tác động (Target)
                 let targetName = log.user?.fullName || "Khách vãng lai";
                 let targetEmail = log.user?.email || null;
 
                 if (isMassGift) {
-                  targetName = "Nhiều người dùng";
-                  targetEmail = null; // Tặng nhiều người nên không hiện email cụ thể
+                  const affectedIds =
+                    (log.newData as any)?.affectedUserIds || [];
+                  if (affectedIds.length === 1) {
+                    targetName = `User #${affectedIds[0]}`;
+                    targetEmail = null;
+                  } else if (affectedIds.length > 1) {
+                    targetName = `Nhiều người dùng (${affectedIds.length})`;
+                    targetEmail = null;
+                  } else {
+                    targetName = "Không xác định";
+                    targetEmail = null;
+                  }
                 }
 
-                // 3. Xác định Người thực hiện (Actor)
-                // Ưu tiên lấy performedByAdminId, nếu là MASS_GIFT thì userId chính là Admin
                 const adminId =
                   log.newData?.performedByAdminId ||
                   (isMassGift ? log.userId : null);

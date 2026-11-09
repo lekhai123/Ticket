@@ -34,27 +34,32 @@ export default function Profile() {
   const { updateAvatar, isUploadingAvatar } = useUser();
   const { registerPasskey } = usePasskey();
   const [isRegisteringPasskey, setIsRegisteringPasskey] = useState(false);
-
-  // ✅ State cho phân trang vé
   const [ticketPage, setTicketPage] = useState(1);
+
+  const [cancelingTicketId, setCancelingTicketId] = useState<number | null>(
+    null,
+  );
 
   const { data: ticketsResponse, isLoading: isLoadingTickets } = useQuery({
     queryKey: ["my-tickets", user?.id, ticketPage],
-    queryFn: () => bookingApi.getMyTickets(ticketPage, 5), // Lấy 5 vé 1 trang
+    queryFn: () => bookingApi.getMyTickets(ticketPage, 5),
     enabled: !!user?.id && activeTab === "tickets",
   });
 
   const cancelMutation = useMutation({
-    mutationFn: (ticketId: number) => bookingApi.cancelBooking(ticketId),
+    mutationFn: (ticketId: number) => {
+      setCancelingTicketId(ticketId);
+      return bookingApi.cancelBooking(ticketId);
+    },
     onSuccess: (res) => {
       alert(res.message || "Hủy vé thành công và đã hoàn tiền vào ví!");
-      // Tải lại toàn bộ dữ liệu liên quan đến Vé và Ví
       queryClient.invalidateQueries({ queryKey: ["my-tickets"] });
       queryClient.invalidateQueries({ queryKey: ["wallet"] });
       queryClient.invalidateQueries({ queryKey: ["trips"] });
       queryClient.invalidateQueries({ queryKey: ["trip"] });
     },
     onError: (err: any) => alert(err.message || "Hủy vé thất bại!"),
+    onSettled: () => setCancelingTicketId(null),
   });
 
   const handleLogout = async () => {
@@ -208,7 +213,6 @@ export default function Profile() {
               <LogOut className="mr-2 h-4 w-4" /> Đăng xuất
             </Button>
 
-            {/* SỬA LỖI 2 ICON XOAY: Chỉ dùng isLoading của Button, xóa Loader2 thủ công */}
             <Button
               onClick={handleRegisterPasskey}
               disabled={isRegisteringPasskey}
@@ -302,7 +306,8 @@ export default function Profile() {
                         <Button
                           variant="outline"
                           className="text-rose-400 border-rose-500/20 hover:bg-rose-500/10 h-9 text-xs"
-                          isLoading={cancelMutation.isPending}
+                          isLoading={cancelingTicketId === ticket.id}
+                          disabled={cancelingTicketId !== null}
                           onClick={() => {
                             if (
                               confirm(
@@ -324,7 +329,6 @@ export default function Profile() {
                 );
               })}
 
-              {/* PHÂN TRANG VÉ */}
               {(meta?.totalPages || 1) > 1 && (
                 <div className="flex items-center justify-center gap-6 mt-8 pt-6 border-t border-white/[0.08]">
                   <button

@@ -8,10 +8,10 @@ import {
 } from "../config/cloudinary";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { MultiLevelCache } from "./cacheService";
+import { sendNotificationEmail } from "../queues/mailQueue";
 
 export class AdminService {
   static async getSystemStats() {
-    //  Các số liệu Real-time (Đếm trực tiếp, tốc độ cực nhanh)
     const totalUsers = await prisma.users.count({
       where: { role: "CUSTOMER" },
     });
@@ -23,13 +23,11 @@ export class AdminService {
       _sum: { balance: true },
     });
 
-    // Tổng doanh thu lấy từ View (Cộng tất cả các ngày)
     const totalRevResult: any[] = await prisma.$queryRaw`
       SELECT SUM(total_revenue) as total FROM revenue_stats
     `;
     const totalRevenue = Number(totalRevResult[0]?.total || 0);
 
-    // Top Tuyến đường (Vẫn dùng SQL GROUP BY vì nó nhẹ)
     const topRoutes: any[] = await prisma.$queryRaw`
       SELECT tr.route as name, COUNT(t.id) as tickets
       FROM "Tickets" t
@@ -44,7 +42,6 @@ export class AdminService {
       tickets: Number(r.tickets),
     }));
 
-    // Biểu đồ doanh thu 7 ngày (Đọc từ View - Cực nhẹ)
     const chartData: any[] = await prisma.$queryRaw`
       SELECT 
         TO_CHAR(date, 'DD/MM') as date,
@@ -53,7 +50,6 @@ export class AdminService {
       WHERE date >= CURRENT_DATE - INTERVAL '7 days'
     `;
 
-    // Map để đảm bảo đủ 7 ngày (ngày nào không có thì gán 0)
     const revenueChartMap = new Map<string, number>();
     for (let i = 6; i >= 0; i--) {
       const d = new Date();
@@ -126,7 +122,7 @@ export class AdminService {
           wallet: {
             select: {
               balance: true,
-              isLocked: true, //THÊM DÒNG NÀY ĐỂ LẤY TRẠNG THÁI KHÓA VÍ
+              isLocked: true,
             },
           },
         },
@@ -153,19 +149,28 @@ export class AdminService {
   }) {
     let targetUsers: {
       id: number;
+      email: string;
       wallet: { id: number; balance: any } | null;
     }[] = [];
 
     if (data.targetType === "SINGLE" && data.targetId) {
       const singleUser = await prisma.users.findUnique({
         where: { id: Number(data.targetId) },
-        select: { id: true, wallet: { select: { id: true, balance: true } } },
+        select: {
+          id: true,
+          email: true,
+          wallet: { select: { id: true, balance: true } },
+        },
       });
       if (singleUser) targetUsers = [singleUser];
     } else {
       targetUsers = await prisma.users.findMany({
         where: { role: "CUSTOMER" },
-        select: { id: true, wallet: { select: { id: true, balance: true } } },
+        select: {
+          id: true,
+          email: true,
+          wallet: { select: { id: true, balance: true } },
+        },
       });
     }
 
@@ -184,7 +189,7 @@ export class AdminService {
     const requestId = `REQ_${Date.now()}`;
     const totalSpent = data.amount * targetUserIds.length;
 
-    return await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
       await tx.wallets.updateMany({
         where: { userId: { in: targetUserIds } },
         data: { balance: { increment: data.amount } },
@@ -248,6 +253,26 @@ export class AdminService {
         totalAmountSpent: totalSpent,
       };
     });
+
+    validUsers.forEach((u) => {
+      if (u.email) {
+        sendNotificationEmail({
+          email: u.email,
+          type: "ADMIN_GIFT",
+          data: {
+            amount: data.amount,
+            reason: data.reason,
+          },
+        }).catch((err) => {
+          console.error(
+            `[ADMIN] Lỗi đẩy job gửi mail quà tặng cho ${u.email}:`,
+            err?.message,
+          );
+        });
+      }
+    });
+
+    return result;
   }
 
   static async getAuditLogs(params: {
