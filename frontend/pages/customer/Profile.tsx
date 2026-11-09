@@ -7,7 +7,7 @@ import { Button } from "../../components/ui/Button";
 import { VipBadge } from "../../components/common/VipBadge";
 import { formatCurrency, formatDate } from "../../utils/format";
 import { useUser } from "../../hooks/useUser";
-import { usePasskey } from "../../hooks/usePasskey"; // ✅ Thêm import
+import { usePasskey } from "../../hooks/usePasskey";
 import {
   Mail,
   Shield,
@@ -33,6 +33,9 @@ export default function Profile() {
   const [activeTab, setActiveTab] = useState<"info" | "tickets">("info");
   const { updateAvatar, isUploadingAvatar } = useUser();
   const { registerPasskey } = usePasskey();
+
+  // ✅ Thêm state loading cho nút cài đặt Vân tay
+  const [isRegisteringPasskey, setIsRegisteringPasskey] = useState(false);
 
   const { data: ticketsResponse, isLoading: isLoadingTickets } = useQuery({
     queryKey: ["my-tickets", user?.id],
@@ -71,13 +74,22 @@ export default function Profile() {
     }
   };
 
-  // Hàm xử lý cài đặt Passkey
+  // ✅ Cập nhật hàm xử lý để có loading và chặn spam click
   const handleRegisterPasskey = async () => {
-    const res = await registerPasskey();
-    if (res.success) {
-      alert("✅ " + res.message);
-    } else {
-      alert("❌ " + res.message);
+    if (isRegisteringPasskey) return; // Chặn nếu đang trong quá trình xử lý
+
+    setIsRegisteringPasskey(true);
+    try {
+      const res = await registerPasskey();
+      if (res.success) {
+        alert("✅ " + res.message);
+      } else {
+        alert("❌ " + res.message);
+      }
+    } catch (error) {
+      alert("❌ Có lỗi xảy ra khi cài đặt Vân tay.");
+    } finally {
+      setIsRegisteringPasskey(false); // Luôn tắt loading dù thành công hay thất bại
     }
   };
 
@@ -201,9 +213,19 @@ export default function Profile() {
 
             <Button
               onClick={handleRegisterPasskey}
-              className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 w-full sm:w-auto"
+              disabled={isRegisteringPasskey} // ✅ Khóa nút khi đang xử lý
+              isLoading={isRegisteringPasskey} // ✅ Hiệu ứng loading của Button component
+              className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 w-full sm:w-auto disabled:opacity-50"
             >
-              <Fingerprint className="mr-2 h-5 w-5" /> Cài đặt Vân tay / FaceID
+              {/* Nếu đang load thì hiện icon xoay, không thì hiện Vân tay */}
+              {isRegisteringPasskey ? (
+                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+              ) : (
+                <Fingerprint className="mr-2 h-5 w-5" />
+              )}
+              {isRegisteringPasskey
+                ? "Đang cài đặt..."
+                : "Cài đặt Vân tay / FaceID"}
             </Button>
           </div>
         </div>
