@@ -77,6 +77,7 @@ export class BookingController {
     const role = (req as any).user?.role;
 
     let targetUserId = Number(userIdFromToken);
+    // Nếu là ADMIN và có truyền userId trên URL thì lấy ID đó
     if (role === "ADMIN" && req.params.userId) {
       targetUserId = Number(req.params.userId);
     }
@@ -87,12 +88,35 @@ export class BookingController {
         .json({ success: false, message: "Mã người dùng không hợp lệ!" });
     }
 
-    const tickets = await prisma.tickets.findMany({
-      where: { userId: targetUserId },
-      include: { trip: true },
-      orderBy: { createdAt: "desc" },
-    });
+    // Lấy tham số phân trang từ URL
+    const page = req.query.page ? Number(req.query.page) : 1;
+    const limit = req.query.limit ? Number(req.query.limit) : 5; // Mặc định 5 vé/trang
+    const skip = (page - 1) * limit;
 
-    return res.status(200).json({ success: true, data: tickets });
+    // Dùng $transaction để lấy data và tổng số lượng cùng lúc (nhanh hơn)
+    const [tickets, total] = await prisma.$transaction([
+      prisma.tickets.findMany({
+        where: { userId: targetUserId },
+        include: { trip: true },
+        orderBy: { createdAt: "desc" },
+        skip: skip,
+        take: limit,
+      }),
+      prisma.tickets.count({
+        where: { userId: targetUserId },
+      }),
+    ]);
+
+    //Trả về thêm object `meta` để Frontend vẽ nút chuyển trang
+    return res.status(200).json({
+      success: true,
+      data: tickets,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    });
   });
 }

@@ -15,8 +15,6 @@ export class BookingService {
     paymentMethod: "WALLET" | "LATER" = "WALLET",
   ) {
     const lockKey = `lock:trip:${tripId}:seat:${seatNumber}`;
-
-    // TTL 30s đủ cho transaction đặt vé (timeout 25s bên dưới)
     const lockToken = await RedisLock.acquire(lockKey, 30);
     if (!lockToken) {
       const error: any = new Error(
@@ -29,10 +27,8 @@ export class BookingService {
     try {
       const result = await prisma.$transaction(
         async (tx) => {
-          // Advisory lock theo ghế — bảo vệ khi Redis lock hết hạn/Redis down.
-          // Tự động nhả khi transaction commit hoặc rollback.
           await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`seat:${tripId}:${seatNumber}`}))::text`;
-          // Check ghế — chạy trong transaction (an toàn với race condition)
+
           const existingTicket = await tx.tickets.findFirst({
             where: {
               tripId,
@@ -49,7 +45,6 @@ export class BookingService {
             throw error;
           }
 
-          // Lấy trip trong transaction để giá không đổi giữa chừng
           const trip = await tx.trips.findUnique({ where: { id: tripId } });
           if (!trip) {
             const error: any = new Error("Chuyến xe không tồn tại!");
@@ -72,9 +67,27 @@ export class BookingService {
               throw error;
             }
 
+            // 1. Trừ tiền ví
             await tx.wallets.update({
               where: { userId },
               data: { balance: { decrement: tripPrice } },
+            });
+
+            // GHI LOG GIAO DỊCH (Đặt đúng bên trong transaction)
+            await tx.auditLog.create({
+              data: {
+                requestId: `BOOK_TICKET_${Date.now()}`,
+                userId,
+                action: "BOOK_TICKET_PAYMENT",
+                resource: "Wallets",
+                resourceId: String(wallet?.id || userId),
+                oldData: { balance: currentBalance },
+                newData: {
+                  amount: -tripPrice,
+                  description: `Thanh toán vé chuyến ${trip.route} (Ghế A${seatNumber})`,
+                  newBalance: currentBalance - tripPrice,
+                },
+              },
             });
 
             initialStatus = "CONFIRMED";
@@ -87,7 +100,6 @@ export class BookingService {
         { timeout: 25000 },
       );
 
-      // Xóa cache sơ đồ ghế + danh sách trip để availableSeats cập nhật
       try {
         await MultiLevelCache.invalidate(`trips:detail:${tripId}`);
         await MultiLevelCache.invalidate("trips:all:active");
@@ -100,7 +112,6 @@ export class BookingService {
       await RedisLock.release(lockKey, lockToken);
     }
   }
-
   /**
    * 2. KHÁCH HÀNG CHỦ ĐỘNG HỦY VÉ (có hoàn tiền nếu đã thanh toán)
    */

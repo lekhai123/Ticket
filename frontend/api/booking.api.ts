@@ -17,8 +17,13 @@ export const bookingApi = {
   },
 
   // Lấy danh sách vé
-  getMyTickets: async (): Promise<ApiResponse<any>> => {
-    const res = await axiosClient.get<ApiResponse<any>>("/bookings/my-tickets");
+  getMyTickets: async (
+    page: number = 1,
+    limit: number = 5,
+  ): Promise<ApiResponse<any>> => {
+    const res = await axiosClient.get<ApiResponse<any>>(
+      `/bookings/my-tickets?page=${page}&limit=${limit}`,
+    );
     return res.data;
   },
 

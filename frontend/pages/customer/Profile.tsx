@@ -33,13 +33,14 @@ export default function Profile() {
   const [activeTab, setActiveTab] = useState<"info" | "tickets">("info");
   const { updateAvatar, isUploadingAvatar } = useUser();
   const { registerPasskey } = usePasskey();
-
-  // ✅ Thêm state loading cho nút cài đặt Vân tay
   const [isRegisteringPasskey, setIsRegisteringPasskey] = useState(false);
 
+  // ✅ State cho phân trang vé
+  const [ticketPage, setTicketPage] = useState(1);
+
   const { data: ticketsResponse, isLoading: isLoadingTickets } = useQuery({
-    queryKey: ["my-tickets", user?.id],
-    queryFn: () => bookingApi.getMyTickets(),
+    queryKey: ["my-tickets", user?.id, ticketPage],
+    queryFn: () => bookingApi.getMyTickets(ticketPage, 5), // Lấy 5 vé 1 trang
     enabled: !!user?.id && activeTab === "tickets",
   });
 
@@ -74,22 +75,17 @@ export default function Profile() {
     }
   };
 
-  // ✅ Cập nhật hàm xử lý để có loading và chặn spam click
   const handleRegisterPasskey = async () => {
-    if (isRegisteringPasskey) return; // Chặn nếu đang trong quá trình xử lý
-
+    if (isRegisteringPasskey) return;
     setIsRegisteringPasskey(true);
     try {
       const res = await registerPasskey();
-      if (res.success) {
-        alert("✅ " + res.message);
-      } else {
-        alert("❌ " + res.message);
-      }
+      if (res.success) alert("✅ " + res.message);
+      else alert("❌ " + res.message);
     } catch (error) {
       alert("❌ Có lỗi xảy ra khi cài đặt Vân tay.");
     } finally {
-      setIsRegisteringPasskey(false); // Luôn tắt loading dù thành công hay thất bại
+      setIsRegisteringPasskey(false);
     }
   };
 
@@ -98,7 +94,9 @@ export default function Profile() {
   const displayName = user?.fullName || "Người dùng";
   const avatarInitial = displayName.charAt(0).toUpperCase();
   const avatarUrl = user?.avatarUrl;
+
   const tickets = ticketsResponse?.data || [];
+  const meta = ticketsResponse?.meta || { totalPages: 1 };
 
   return (
     <div className="max-w-4xl mx-auto py-10 px-4">
@@ -106,7 +104,6 @@ export default function Profile() {
         Trang cá nhân
       </h1>
 
-      {/* Tabs */}
       <div className="flex gap-6 mb-8 border-b border-white/[0.08]">
         <button
           onClick={() => setActiveTab("info")}
@@ -201,7 +198,6 @@ export default function Profile() {
             </div>
           </div>
 
-          {/* ✅ KHU VỰC BẢO MẬT NÂNG CAO */}
           <div className="mt-10 pt-6 border-t border-white/[0.08] flex flex-col sm:flex-row gap-4 items-start sm:items-center">
             <Button
               variant="outline"
@@ -211,18 +207,14 @@ export default function Profile() {
               <LogOut className="mr-2 h-4 w-4" /> Đăng xuất
             </Button>
 
+            {/* ✅ SỬA LỖI 2 ICON XOAY: Chỉ dùng isLoading của Button, xóa Loader2 thủ công */}
             <Button
               onClick={handleRegisterPasskey}
-              disabled={isRegisteringPasskey} // ✅ Khóa nút khi đang xử lý
-              isLoading={isRegisteringPasskey} // ✅ Hiệu ứng loading của Button component
+              disabled={isRegisteringPasskey}
+              isLoading={isRegisteringPasskey}
               className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 w-full sm:w-auto disabled:opacity-50"
             >
-              {/* Nếu đang load thì hiện icon xoay, không thì hiện Vân tay */}
-              {isRegisteringPasskey ? (
-                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-              ) : (
-                <Fingerprint className="mr-2 h-5 w-5" />
-              )}
+              <Fingerprint className="mr-2 h-5 w-5" />
               {isRegisteringPasskey
                 ? "Đang cài đặt..."
                 : "Cài đặt Vân tay / FaceID"}
@@ -242,93 +234,126 @@ export default function Profile() {
               Bạn chưa đặt chuyến xe nào.
             </div>
           ) : (
-            tickets.map((ticket: any) => {
-              const now = Date.now();
-              const departureTime = new Date(
-                ticket.trip?.departureAt,
-              ).getTime();
-              const isMoreThanOneHourLeft =
-                departureTime - now > 60 * 60 * 1000;
-              const canCancel =
-                ticket.status === "CONFIRMED" && isMoreThanOneHourLeft;
+            <>
+              {tickets.map((ticket: any) => {
+                const now = Date.now();
+                const departureTime = new Date(
+                  ticket.trip?.departureAt,
+                ).getTime();
+                const isMoreThanOneHourLeft =
+                  departureTime - now > 60 * 60 * 1000;
+                const canCancel =
+                  ticket.status === "CONFIRMED" && isMoreThanOneHourLeft;
 
-              return (
-                <div
-                  key={ticket.id}
-                  className={cn(
-                    "border rounded-2xl p-6 bg-[#15151B] flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-colors",
-                    ticket.status === "REVOKED_BY_ADMIN"
-                      ? "border-rose-500/20 bg-rose-500/[0.02]"
-                      : "border-white/[0.08]",
-                  )}
-                >
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2 font-semibold text-[#F5F5F7]">
-                      <MapPin className="h-4 w-4 text-[#8B5CF6]" />{" "}
-                      {ticket.trip?.route || "Chuyến xe khách"}
-                    </div>
-                    <div className="text-sm text-[#92929F] flex items-center gap-4">
-                      <span className="flex items-center gap-1">
-                        <Calendar className="h-4 w-4" />{" "}
-                        {formatDate(ticket.trip?.departureAt)}
-                      </span>
-                      <span className="font-medium text-[#F5F5F7]">
-                        Ghế: A{ticket.seatNumber}
-                      </span>
-                    </div>
-                    <div className="text-xs font-medium">
-                      Trạng thái:{" "}
-                      <span
-                        className={cn(
-                          ticket.status === "CONFIRMED"
-                            ? "text-emerald-400"
+                return (
+                  <div
+                    key={ticket.id}
+                    className={cn(
+                      "border rounded-2xl p-6 bg-[#15151B] flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-colors",
+                      ticket.status === "REVOKED_BY_ADMIN"
+                        ? "border-rose-500/20 bg-rose-500/[0.02]"
+                        : "border-white/[0.08]",
+                    )}
+                  >
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 font-semibold text-[#F5F5F7]">
+                        <MapPin className="h-4 w-4 text-[#8B5CF6]" />{" "}
+                        {ticket.trip?.route || "Chuyến xe khách"}
+                      </div>
+                      <div className="text-sm text-[#92929F] flex items-center gap-4">
+                        <span className="flex items-center gap-1">
+                          <Calendar className="h-4 w-4" />{" "}
+                          {formatDate(ticket.trip?.departureAt)}
+                        </span>
+                        <span className="font-medium text-[#F5F5F7]">
+                          Ghế: A{ticket.seatNumber}
+                        </span>
+                      </div>
+                      <div className="text-xs font-medium">
+                        Trạng thái:{" "}
+                        <span
+                          className={cn(
+                            ticket.status === "CONFIRMED"
+                              ? "text-emerald-400"
+                              : ticket.status === "CANCELED"
+                                ? "text-amber-400"
+                                : ticket.status === "REVOKED_BY_ADMIN"
+                                  ? "text-rose-400"
+                                  : "text-[#92929F]",
+                          )}
+                        >
+                          {ticket.status === "CONFIRMED"
+                            ? "Đã thanh toán"
                             : ticket.status === "CANCELED"
-                              ? "text-amber-400"
+                              ? "Đã hủy vé"
                               : ticket.status === "REVOKED_BY_ADMIN"
-                                ? "text-rose-400"
-                                : "text-[#92929F]",
-                        )}
-                      >
-                        {ticket.status === "CONFIRMED"
-                          ? "Đã thanh toán"
-                          : ticket.status === "CANCELED"
-                            ? "Đã hủy vé"
-                            : ticket.status === "REVOKED_BY_ADMIN"
-                              ? "Bị thu hồi"
-                              : ticket.status}
-                      </span>
+                                ? "Bị thu hồi"
+                                : ticket.status}
+                        </span>
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="flex flex-col items-end gap-3 w-full md:w-auto">
-                    <div className="text-lg font-semibold text-[#8B5CF6]">
-                      {formatCurrency(ticket.trip?.price)}
-                    </div>
-                    {canCancel ? (
-                      <Button
-                        variant="outline"
-                        className="text-rose-400 border-rose-500/20 hover:bg-rose-500/10 h-9 text-xs"
-                        isLoading={cancelMutation.isPending}
-                        onClick={() => {
-                          if (
-                            confirm(
-                              `Hủy vé ghế A${ticket.seatNumber}? Hoàn tiền 100%.`,
+                    <div className="flex flex-col items-end gap-3 w-full md:w-auto">
+                      <div className="text-lg font-semibold text-[#8B5CF6]">
+                        {formatCurrency(ticket.trip?.price)}
+                      </div>
+                      {canCancel ? (
+                        <Button
+                          variant="outline"
+                          className="text-rose-400 border-rose-500/20 hover:bg-rose-500/10 h-9 text-xs"
+                          isLoading={cancelMutation.isPending}
+                          onClick={() => {
+                            if (
+                              confirm(
+                                `Hủy vé ghế A${ticket.seatNumber}? Hoàn tiền 100%.`,
+                              )
                             )
-                          )
-                            cancelMutation.mutate(ticket.id);
-                        }}
-                      >
-                        <XCircle className="h-4 w-4 mr-1" /> Hủy vé
-                      </Button>
-                    ) : ticket.status === "CONFIRMED" ? (
-                      <span className="text-xs text-[#92929F] italic bg-[#0D0D10] px-3 py-1.5 rounded-lg border border-white/[0.04]">
-                        Quá hạn hủy vé
-                      </span>
-                    ) : null}
+                              cancelMutation.mutate(ticket.id);
+                          }}
+                        >
+                          <XCircle className="h-4 w-4 mr-1" /> Hủy vé
+                        </Button>
+                      ) : ticket.status === "CONFIRMED" ? (
+                        <span className="text-xs text-[#92929F] italic bg-[#0D0D10] px-3 py-1.5 rounded-lg border border-white/[0.04]">
+                          Quá hạn hủy vé
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
+                );
+              })}
+
+              {/* ✅ PHÂN TRANG VÉ */}
+              {meta.totalPages > 1 && (
+                <div className="flex items-center justify-center gap-6 mt-8 pt-6 border-t border-white/[0.08]">
+                  <button
+                    onClick={() => {
+                      setTicketPage((p) => p - 1);
+                      window.scrollTo({ top: 0, behavior: "smooth" });
+                    }}
+                    disabled={ticketPage === 1}
+                    className="px-5 py-2.5 rounded-xl border border-white/[0.08] bg-[#15151B] text-sm font-medium text-[#F5F5F7] disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white/[0.04] transition-colors"
+                  >
+                    Trang trước
+                  </button>
+                  <span className="text-sm text-[#92929F]">
+                    Trang{" "}
+                    <strong className="text-[#F5F5F7]">{ticketPage}</strong> /{" "}
+                    {meta.totalPages}
+                  </span>
+                  <button
+                    onClick={() => {
+                      setTicketPage((p) => p + 1);
+                      window.scrollTo({ top: 0, behavior: "smooth" });
+                    }}
+                    disabled={ticketPage >= meta.totalPages}
+                    className="px-5 py-2.5 rounded-xl border border-white/[0.08] bg-[#15151B] text-sm font-medium text-[#F5F5F7] disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white/[0.04] transition-colors"
+                  >
+                    Trang sau
+                  </button>
                 </div>
-              );
-            })
+              )}
+            </>
           )}
         </div>
       )}
