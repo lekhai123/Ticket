@@ -4,14 +4,13 @@ import { sendOtpEmail } from "../config/resend";
 import { MailJobData } from "./mailQueue";
 
 const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
+const isTls = redisUrl.startsWith("rediss://");
 
 const redisConnection = new Redis(redisUrl, {
   maxRetriesPerRequest: null,
-  enableReadyCheck: false, // Quan trọng với Upstash
-  keepAlive: 10000, // ✅ Giữ kết nối sống
-  tls: redisUrl.startsWith("rediss://")
-    ? { rejectUnauthorized: false }
-    : undefined, // ✅ Hỗ trợ Upstash TLS
+  enableReadyCheck: false,
+  keepAlive: 10000,
+  tls: isTls ? { rejectUnauthorized: false } : undefined,
 });
 
 export const mailWorker = new Worker<MailJobData>(
@@ -37,7 +36,6 @@ mailWorker.on("failed", (job, err) =>
   console.error(`[QUEUE FAILED] Job ${job?.id} lỗi: ${err.message}`),
 );
 mailWorker.on("error", (err) => {
-  // Chỉ log lỗi, không làm sập worker
   console.error("[QUEUE WORKER ERROR]:", err.message);
 });
 

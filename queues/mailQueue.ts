@@ -3,13 +3,14 @@ import Redis from "ioredis";
 
 const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
 
+// Đảm bảo URL bắt đầu bằng rediss:// nếu dùng Upstash
+const isTls = redisUrl.startsWith("rediss://");
+
 const redisConnection = new Redis(redisUrl, {
-  maxRetriesPerRequest: null,
+  maxRetriesPerRequest: null, // Bắt buộc cho BullMQ
   enableReadyCheck: false, // Quan trọng với Upstash
-  keepAlive: 10000, // ✅ Giữ kết nối sống
-  tls: redisUrl.startsWith("rediss://")
-    ? { rejectUnauthorized: false }
-    : undefined, // ✅ Hỗ trợ Upstash TLS
+  keepAlive: 10000, // Giữ kết nối sống qua proxy
+  tls: isTls ? { rejectUnauthorized: false } : undefined, // Hỗ trợ TLS
 });
 
 export interface MailJobData {
