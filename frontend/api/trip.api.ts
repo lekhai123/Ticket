@@ -11,8 +11,10 @@ export const tripApi = {
     return res.data.data;
   },
 
-  async getAllTrips(): Promise<Trip[]> {
-    const res = await axiosClient.get<ApiResponse<Trip[]>>("/trips");
+  async getAllTrips(page: number = 1, limit: number = 12): Promise<Trip[]> {
+    const res = await axiosClient.get<ApiResponse<Trip[]>>(
+      `/trips?page=${page}&limit=${limit}`, // thêm query params
+    );
     return res.data.data;
   },
 

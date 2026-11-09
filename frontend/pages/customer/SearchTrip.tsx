@@ -8,8 +8,19 @@ import { cn } from "../../utils/cn";
 export default function SearchTrip() {
   const [query, setQuery] = useState("");
   const navigate = useNavigate();
-  const { searchTrips, clearSearch, isSearching, isLoading, trips, error } =
-    useTrips();
+
+  // Lấy thêm page, setPage, isSearchMode từ hook
+  const {
+    searchTrips,
+    clearSearch,
+    isSearching,
+    isLoading,
+    trips,
+    error,
+    page,
+    setPage,
+    isSearchMode,
+  } = useTrips();
 
   const handleSearch = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -190,6 +201,29 @@ export default function SearchTrip() {
           })
         )}
       </div>
+
+      {/* ✅ THÊM PHẦN PHÂN TRANG TẠI ĐÂY (Chỉ hiện khi không tìm kiếm AI) */}
+      {!isSearchMode && !isLoading && trips.length > 0 && (
+        <div className="flex items-center justify-center gap-6 mt-10 pt-6 border-t border-white/[0.08]">
+          <button
+            onClick={() => setPage(page - 1)}
+            disabled={page === 1}
+            className="px-5 py-2.5 rounded-xl border border-white/[0.08] bg-[#15151B] text-sm font-medium text-[#F5F5F7] disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white/[0.04] transition-colors"
+          >
+            Trang trước
+          </button>
+          <span className="text-sm text-[#92929F]">
+            Trang <strong className="text-[#F5F5F7]">{page}</strong>
+          </span>
+          <button
+            onClick={() => setPage(page + 1)}
+            disabled={trips.length < 12} // Nếu trang này trả về ít hơn 12 tức là trang cuối
+            className="px-5 py-2.5 rounded-xl border border-white/[0.08] bg-[#15151B] text-sm font-medium text-[#F5F5F7] disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white/[0.04] transition-colors"
+          >
+            Trang sau
+          </button>
+        </div>
+      )}
     </div>
   );
 }

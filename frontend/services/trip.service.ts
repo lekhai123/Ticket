@@ -5,8 +5,8 @@ export const tripService = {
     return tripApi.semanticSearch(prompt);
   },
 
-  getAllTrips: () => {
-    return tripApi.getAllTrips();
+  getAllTrips: (page: number = 1, limit: number = 12) => {
+    return tripApi.getAllTrips(page, limit);
   },
 
   getById: (id: number | string) => {
