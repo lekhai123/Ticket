@@ -55,8 +55,18 @@ export class BookingService {
 
           if (paymentMethod === "WALLET") {
             const wallet = await tx.wallets.findUnique({ where: { userId } });
-            currentBalance = Number(wallet?.balance || 0);
-            walletId = wallet?.id || userId;
+
+            // ĐÃ THÊM ĐOẠN CHẶN VÍ BỊ KHÓA TẠI ĐÂY
+            if (!wallet || wallet.isLocked) {
+              const error: any = new Error(
+                "Ví của bạn đang bị khóa do vi phạm hoặc chờ đối soát. Vui lòng liên hệ Admin!",
+              );
+              error.statusCode = 403;
+              throw error;
+            }
+
+            currentBalance = Number(wallet.balance || 0);
+            walletId = wallet.id;
 
             if (currentBalance < tripPrice) {
               const error: any = new Error(
@@ -79,7 +89,6 @@ export class BookingService {
               tripId,
               seatNumber,
               status: initialStatus,
-              // Lưu lại phương thức thanh toán và số tiền thực trả để sau này hoàn tiền chuẩn
               paymentMethod: paymentMethod === "WALLET" ? "WALLET" : "LATER",
               paidAmount: paymentMethod === "WALLET" ? tripPrice : 0,
             },
@@ -89,7 +98,6 @@ export class BookingService {
             await tx.auditLog.create({
               data: {
                 requestId: `BOOK_TICKET_${Date.now()}`,
-                // Quy ước batchId theo chuyến xe để Admin dễ thu hồi hàng loạt
                 batchId: batchId || `TRIP_${tripId}`,
                 userId,
                 action: "BOOK_TICKET_PAYMENT",
@@ -149,7 +157,7 @@ export class BookingService {
         data: { status: "REVOKED_BY_ADMIN" },
       });
 
-      //  LOGIC HOÀN TIỀN THÔNG MINH: Chỉ hoàn nếu user thực sự bỏ tiền ra mua
+      // LOGIC HOÀN TIỀN THÔNG MINH: Chỉ hoàn nếu user thực sự bỏ tiền ra mua
       let refundAmount = 0;
       if (ticket.status === "CONFIRMED") {
         if (
@@ -158,7 +166,6 @@ export class BookingService {
         ) {
           refundAmount = Number(ticket.paidAmount || ticket.trip.price);
         }
-        // Nếu là vé GIFT, ADMIN_GRANT, LATER, hoặc paidAmount = 0 -> refundAmount giữ nguyên = 0 (Không hoàn tiền)
       }
 
       if (refundAmount > 0) {
@@ -190,7 +197,6 @@ export class BookingService {
         });
       }
 
-      // Ghi log thu hồi vé
       await tx.auditLog.create({
         data: {
           requestId: `ADMIN_REVOKE_TICKET_${Date.now()}`,
@@ -221,7 +227,6 @@ export class BookingService {
     return result;
   }
 
-  // (Hàm cancelTicket của User giữ nguyên như code cũ của bạn)
   /**
    * 2. KHÁCH HÀNG CHỦ ĐỘNG HỦY VÉ (có hoàn tiền nếu đã thanh toán)
    */
@@ -259,19 +264,16 @@ export class BookingService {
         data: { status: "CANCELED" },
       });
 
-      // Hoàn tiền nếu vé đã thanh toán bằng ví
       if (ticket.status === "CONFIRMED") {
         const wallet = await tx.wallets.findUnique({ where: { userId } });
         const currentBalance = Number(wallet?.balance || 0);
         const refundAmount = Number(ticket.trip.price);
 
-        // 1. Cộng tiền vào ví
         await tx.wallets.update({
           where: { userId },
           data: { balance: { increment: refundAmount } },
         });
 
-        // GHI LOG HOÀN TIỀN
         await tx.auditLog.create({
           data: {
             requestId: `REFUND_TICKET_${Date.now()}`,
