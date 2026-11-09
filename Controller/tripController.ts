@@ -73,8 +73,14 @@ export class TripController {
   });
   static getAllTripsForAdmin = catchAsync(
     async (req: Request, res: Response) => {
-      const trips = await TripService.getAllTripsForAdminLogic();
-      res.status(200).json({ success: true, data: trips });
+      const page = req.query.page ? Number(req.query.page) : 1;
+      const limit = req.query.limit ? Number(req.query.limit) : 10;
+
+      const result = await TripService.getAllTripsForAdminLogic(page, limit);
+      // Trả về cấu trúc data + meta giống lịch sử vé
+      res
+        .status(200)
+        .json({ success: true, data: result.data, meta: result.meta });
     },
   );
 }

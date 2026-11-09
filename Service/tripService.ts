@@ -258,17 +258,27 @@ export class TripService {
     await this.invalidateTripCaches(id);
     return deletedTrip;
   }
-  static async getAllTripsForAdminLogic() {
-    const trips = await prisma.trips.findMany({
-      orderBy: { departureAt: "desc" },
-      include: {
-        tickets: {
-          where: { status: { in: ["HELD", "PENDING", "CONFIRMED"] } },
-          select: { seatNumber: true },
+  static async getAllTripsForAdminLogic(page: number = 1, limit: number = 10) {
+    const skip = (page - 1) * limit;
+    const [trips, total] = await prisma.$transaction([
+      prisma.trips.findMany({
+        orderBy: { departureAt: "desc" },
+        skip: skip,
+        take: limit,
+        include: {
+          tickets: {
+            where: { status: { in: ["HELD", "PENDING", "CONFIRMED"] } },
+            select: { seatNumber: true },
+          },
         },
-      },
-    });
-    return trips.map((trip) => this.formatTripWithSeats(trip));
+      }),
+      prisma.trips.count(),
+    ]);
+
+    return {
+      data: trips.map((trip) => this.formatTripWithSeats(trip)),
+      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    };
   }
   /**
    * Tìm chuyến bằng từ khóa (ILIKE) hoặc semantic search (pgvector).
@@ -313,7 +323,7 @@ export class TripService {
     const queryVector = await this.getEmbedding(cleanPrompt);
     const vectorString = `[${queryVector.join(",")}]`;
 
-    // ✅ SỬA: Tăng ngưỡng lên 0.85 để AI cực kỳ khắt khe, tránh trả về rác
+    // SỬA: Tăng ngưỡng lên 0.85 để AI cực kỳ khắt khe, tránh trả về rác
     const SIMILARITY_THRESHOLD = 0.85;
 
     const trips: any[] = await prisma.$queryRaw`
@@ -326,7 +336,7 @@ export class TripService {
       LIMIT ${limit};
     `;
 
-    // ✅ SỬA: Nếu AI không tìm thấy thì trả về mảng rỗng [], không hiển thị bừa
+    // SỬA: Nếu AI không tìm thấy thì trả về mảng rỗng [], không hiển thị bừa
     if (!trips || trips.length === 0) {
       return [];
     }
