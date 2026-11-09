@@ -5,6 +5,7 @@ import { createBrowserRouter, Navigate } from "react-router-dom";
 import AuthLayout from "../layouts/AuthLayout";
 import CustomerLayout from "../layouts/CustomerLayout";
 import AdminLayout from "../layouts/AdminLayout";
+import TicketManagement from "../pages/admin/TicketManagement";
 
 // Component hiển thị khi đang tải (Loading)
 const LoadingFallback = () => (
@@ -90,6 +91,7 @@ export const router = createBrowserRouter([
         path: "reconciliation",
         element: withSuspense(FinancialReconciliation),
       },
+      { path: "tickets", element: withSuspense(TicketManagement) },
       { path: "trips", element: withSuspense(TripManagement) },
     ],
   },

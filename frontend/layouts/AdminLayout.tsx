@@ -19,6 +19,7 @@ import {
   Menu,
   Bell,
   LogOut,
+  Ticket,
 } from "lucide-react";
 import { cn } from "../utils/cn";
 import { authApi } from "../api/auth.api";
@@ -51,6 +52,7 @@ export default function AdminLayout() {
     { label: "Dashboard", path: "/admin/dashboard", icon: LayoutDashboard },
     { label: "Quản lý Chuyến xe", path: "/admin/trips", icon: Bus },
     { label: "Quản lý Users", path: "/admin/users", icon: Users },
+    { label: "Quản lý Vé", path: "/admin/tickets", icon: Ticket },
     { label: "Tặng tiền", path: "/admin/mass-gift", icon: Gift },
     { label: "Thu hồi", path: "/admin/revoke", icon: RotateCcw },
     {

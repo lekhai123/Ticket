@@ -1,0 +1,250 @@
+import React, { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { adminApi } from "../../api/admin.api";
+import {
+  Search,
+  Bot,
+  AlertTriangle,
+  ShieldCheck,
+  XCircle,
+  RefreshCcw,
+} from "lucide-react";
+import { formatCurrency, formatDate } from "../../utils/format";
+import { cn } from "../../utils/cn";
+
+export default function TicketManagement() {
+  const queryClient = useQueryClient();
+  const [page, setPage] = useState(1);
+  const [searchText, setSearchText] = useState("");
+
+  // 1. Lấy danh sách vé
+  const { data: response, isLoading } = useQuery({
+    queryKey: ["admin-tickets", page, searchText],
+    queryFn: () => adminApi.getTickets({ page, limit: 15, search: searchText }),
+  });
+
+  const tickets = response?.data || [];
+  const totalPages = response?.meta?.totalPages || 1;
+
+  // ✅ 2. Tự động lấy cảnh báo AI mới nhất (Không cần bấm nút)
+  const { data: alertResponse, isLoading: isAlertLoading } = useQuery({
+    queryKey: ["admin-ticket-alerts"],
+    queryFn: () => adminApi.getAIAlerts(),
+    refetchInterval: 60000, // Tự động cập nhật mỗi 1 phút
+  });
+
+  const latestAlert = alertResponse?.data?.[0]; // Lấy cảnh báo mới nhất
+
+  const revokeMutation = useMutation({
+    mutationFn: ({ ticketId, reason }: { ticketId: number; reason: string }) =>
+      adminApi.revokeTicket(ticketId, reason),
+    onSuccess: () => {
+      alert("Đã thu hồi vé và hoàn tiền thành công!");
+      queryClient.invalidateQueries({ queryKey: ["admin-tickets"] });
+    },
+    onError: (err: any) => alert(err.message || "Lỗi khi thu hồi vé"),
+  });
+
+  const handleRevoke = (ticketId: number) => {
+    const reason = prompt(
+      "Nhập lý do thu hồi vé này (VD: Lỗi giá 0đ, Bug hệ thống...):",
+    );
+    if (reason && reason.trim().length > 0) {
+      revokeMutation.mutate({ ticketId, reason });
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight text-[#F5F5F7]">
+            Quản lý Vé
+          </h1>
+          <p className="text-sm text-[#92929F] mt-1">
+            Hệ thống AI tự động quét bất thường mỗi 15 phút.
+          </p>
+        </div>
+        <button
+          onClick={() => queryClient.invalidateQueries()}
+          className="bg-white/[0.04] hover:bg-white/[0.08] p-2 rounded-xl text-sm transition"
+          title="Làm mới"
+        >
+          <RefreshCcw className="h-4 w-4 text-[#92929F]" />
+        </button>
+      </div>
+
+      {/* ✅ HIỂN THỊ CẢNH BÁO TỰ ĐỘNG TỪ AI */}
+      {latestAlert && (
+        <div className="p-4 rounded-2xl border bg-rose-500/10 border-rose-500/20">
+          <h3 className="flex items-center gap-2 font-semibold mb-2 text-rose-400">
+            <AlertTriangle className="h-5 w-5" />
+            Báo cáo tự động từ AI ({formatDate(latestAlert.createdAt)})
+          </h3>
+          <p className="text-sm text-[#F5F5F7] mb-2">
+            {(latestAlert.newData as any)?.aiAnalysis}
+          </p>
+          <p className="text-xs text-rose-300 font-medium">
+            ⚠️ Vui lòng kiểm tra các vé có nền đỏ bên dưới và tiến hành thu hồi
+            nếu cần thiết.
+          </p>
+        </div>
+      )}
+
+      <div className="relative max-w-md w-full">
+        <input
+          type="text"
+          placeholder="Tìm theo Mã vé, Email, Tuyến đường, Batch ID..."
+          value={searchText}
+          onChange={(e) => {
+            setSearchText(e.target.value);
+            setPage(1);
+          }}
+          className="w-full rounded-xl border border-white/[0.08] bg-[#15151B] px-4 py-2.5 text-sm text-[#F5F5F7] focus:border-[#8B5CF6] focus:outline-none pl-10"
+        />
+        <Search className="absolute left-3 top-3 h-4 w-4 text-[#92929F]" />
+      </div>
+
+      <div className="overflow-x-auto rounded-2xl border border-white/[0.08] bg-[#15151B]">
+        <table className="w-full text-left text-sm whitespace-nowrap">
+          <thead className="border-b border-white/[0.08] text-[#92929F]">
+            <tr>
+              <th className="p-4 font-medium">Mã Vé</th>
+              <th className="p-4 font-medium">Khách hàng</th>
+              <th className="p-4 font-medium">Chuyến xe</th>
+              <th className="p-4 font-medium">Ngày đặt</th>
+              <th className="p-4 font-medium">Thực trả</th>
+              <th className="p-4 font-medium">Trạng thái</th>
+              <th className="p-4 font-medium text-right">Hành động</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-white/[0.04]">
+            {isLoading ? (
+              <tr>
+                <td colSpan={7} className="p-8 text-center text-[#92929F]">
+                  Đang tải...
+                </td>
+              </tr>
+            ) : tickets.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="p-8 text-center text-[#92929F]">
+                  Không tìm thấy vé nào
+                </td>
+              </tr>
+            ) : (
+              tickets.map((ticket: any) => {
+                const rowClass = ticket.isAnomaly
+                  ? "bg-rose-500/5"
+                  : "hover:bg-white/[0.02]";
+                return (
+                  <tr
+                    key={ticket.id}
+                    className={cn("transition-colors", rowClass)}
+                  >
+                    <td className="p-4 font-mono text-xs text-[#F5F5F7]">
+                      #{ticket.id}
+                      <br />
+                      <span className="text-[10px] text-[#92929F]">
+                        {ticket.batchId}
+                      </span>
+                    </td>
+                    <td className="p-4">
+                      <p className="font-medium text-[#F5F5F7]">
+                        {ticket.user?.fullName}
+                      </p>
+                      <p className="text-xs text-[#92929F]">
+                        {ticket.user?.email}
+                      </p>
+                    </td>
+                    <td className="p-4">
+                      <p className="font-medium text-[#F5F5F7]">
+                        {ticket.trip?.route}
+                      </p>
+                      <p className="text-xs text-[#92929F]">
+                        Ghế A{ticket.seatNumber}
+                      </p>
+                    </td>
+                    <td className="p-4 text-xs text-[#92929F]">
+                      {formatDate(ticket.createdAt)}
+                    </td>
+                    <td className="p-4">
+                      <span
+                        className={cn(
+                          "font-semibold",
+                          ticket.isAnomaly ? "text-rose-400" : "text-[#F5F5F7]",
+                        )}
+                      >
+                        {formatCurrency(Number(ticket.paidAmount || 0))}
+                      </span>
+                      {ticket.isAnomaly && (
+                        <p className="text-[10px] text-rose-400">
+                          Giá gốc: {formatCurrency(ticket.trip?.price)}
+                        </p>
+                      )}
+                    </td>
+                    <td className="p-4">
+                      {ticket.status === "CONFIRMED" ? (
+                        <span className="inline-flex items-center px-2 py-1 rounded-md bg-emerald-500/10 text-emerald-400 text-xs font-medium border border-emerald-500/20">
+                          Thành công
+                        </span>
+                      ) : ticket.status === "REVOKED_BY_ADMIN" ? (
+                        <span className="inline-flex items-center px-2 py-1 rounded-md bg-rose-500/10 text-rose-400 text-xs font-medium border border-rose-500/20">
+                          Đã thu hồi
+                        </span>
+                      ) : (
+                        <span className="text-xs text-[#92929F]">
+                          {ticket.status}
+                        </span>
+                      )}
+                    </td>
+                    <td className="p-4 text-right">
+                      {ticket.status === "CONFIRMED" && (
+                        <button
+                          onClick={() => handleRevoke(ticket.id)}
+                          className="px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 rounded-lg text-xs font-medium transition"
+                        >
+                          <XCircle className="h-3.5 w-3.5 inline mr-1" /> Thu
+                          hồi
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Phân trang giữ nguyên như cũ */}
+      {!isLoading && totalPages > 1 && (
+        <div className="flex items-center justify-center gap-6 mt-6 pt-6 border-t border-white/[0.08]">
+          <button
+            onClick={() => {
+              setPage((prev) => prev - 1);
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }}
+            disabled={page === 1}
+            className="px-5 py-2.5 rounded-xl border border-white/[0.08] bg-[#15151B] text-sm font-medium text-[#F5F5F7] disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white/[0.04]"
+          >
+            Trang trước
+          </button>
+          <span className="text-sm text-[#92929F]">
+            Trang <strong className="text-[#F5F5F7]">{page}</strong> /{" "}
+            {totalPages}
+          </span>
+          <button
+            onClick={() => {
+              setPage((prev) => prev + 1);
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }}
+            disabled={page >= totalPages}
+            className="px-5 py-2.5 rounded-xl border border-white/[0.08] bg-[#15151B] text-sm font-medium text-[#F5F5F7] disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white/[0.04]"
+          >
+            Trang sau
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
