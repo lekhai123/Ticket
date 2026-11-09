@@ -3,7 +3,8 @@ import { TripController } from "../Controller/tripController";
 import { validate } from "../Middleware/validateMiddleware";
 import { cacheResponse } from "../Middleware/idempotencyMiddleware";
 import { authenticateToken, requireAdmin } from "../Middleware/authMiddleware";
-import { rateLimit } from "../Middleware/rateLimitMiddleware"; //  Import
+import { rateLimit } from "../Middleware/rateLimitMiddleware";
+import { AdminController } from "../Controller/adminController";
 import {
   createTripSchema,
   updateTripSchema,
@@ -58,5 +59,6 @@ router.delete(
 
 // 3. API LẤY CHI TIẾT
 router.get("/:id", validate(getTripParamSchema), TripController.getTripById);
+router.get("/system-status", AdminController.getPublicHealth);
 
 export default router;

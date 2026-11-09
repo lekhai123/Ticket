@@ -128,6 +128,20 @@ export class AdminController {
       data: healthData,
     });
   });
+  static getPublicHealth = catchAsync(async (req: Request, res: Response) => {
+    // Dùng lại hàm getHealthStatus cũ
+    const fullHealth = await AdminService.getHealthStatus();
+
+    // Rút gọn lại, chỉ trả về trạng thái cốt lõi để FE hiển thị (Không lộ thông tin nhạy cảm)
+    const publicStatus = {
+      database: fullHealth.database.status === "HEALTHY",
+      redis: fullHealth.redis.primary.status === "HEALTHY",
+      cloudinary: fullHealth.cloudinary.primary.status === "HEALTHY",
+      ai: fullHealth.gemini.primaryKey.status === "HEALTHY",
+    };
+
+    res.status(200).json({ success: true, data: publicStatus });
+  });
 
   // Mở khóa ví thủ công (Đã dời vào trong class)
   static unlockWallet = catchAsync(async (req: Request, res: Response) => {
