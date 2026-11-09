@@ -15,7 +15,8 @@ export interface NotificationJobData {
     | "BOOKING_CANCEL"
     | "ADMIN_REVOKE"
     | "ADMIN_REVOKE_BATCH"
-    | "ADMIN_GIFT";
+    | "ADMIN_GIFT"
+    | "ADMIN_REVOKE_GIFT";
   data: Record<string, any>;
 }
 
