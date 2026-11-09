@@ -1,30 +1,29 @@
 import { useState } from "react";
-import { Search, Ban, Unlock } from "lucide-react";
+import { Search, Lock, Unlock } from "lucide-react";
 import { useUsers } from "../../hooks/useUser";
 import { VipBadge } from "../../components/common/VipBadge";
 import { Input } from "../../components/ui/Input";
 import { formatCurrency } from "../../utils/format";
 import { cn } from "../../utils/cn";
+import { adminApi } from "../../api/admin.api"; // Import adminApi
 
 export default function Users() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
 
-  // Lấy dữ liệu và phân trang từ hook
-  const { usersData, isLoading, updateStatus } = useUsers({ search }, page);
+  const { usersData, isLoading } = useUsers({ search }, page);
 
   const userList = usersData?.users || [];
   const totalPages = usersData?.pagination?.totalPages || 1;
 
-  const handleToggleStatus = async (userId: number, currentStatus: string) => {
-    const newStatus = currentStatus === "ACTIVE" ? "BANNED" : "ACTIVE";
-    if (
-      confirm(
-        `Xác nhận ${newStatus === "BANNED" ? "KHÓA" : "MỞ KHÓA"} tài khoản này?`,
-      )
-    ) {
+  // Hàm xử lý Mở khóa ví
+  const handleUnlockWallet = async (userId: number) => {
+    if (confirm("Bạn có chắc muốn MỞ KHÓA VÍ cho người dùng này?")) {
       try {
-        await updateStatus({ id: userId, status: newStatus });
+        await adminApi.unlockWallet(userId);
+        alert("Mở khóa ví thành công!");
+        // Load lại danh sách để cập nhật trạng thái
+        window.location.reload();
       } catch (err: any) {
         alert(err.message || "Thao tác thất bại");
       }
@@ -39,7 +38,7 @@ export default function Users() {
             Quản lý Người Dùng
           </h1>
           <p className="text-sm text-[#92929F] mt-1">
-            Giám sát và phân quyền hệ thống.
+            Giám sát, phân quyền và quản lý trạng thái ví.
           </p>
         </div>
       </div>
@@ -50,7 +49,7 @@ export default function Users() {
             value={search}
             onChange={(e) => {
               setSearch(e.target.value);
-              setPage(1); // Reset về trang 1 khi tìm kiếm
+              setPage(1);
             }}
             placeholder="Tìm Tên, Email..."
             className="w-full bg-[#15151B] border-white/[0.08] text-[#F5F5F7] pl-10"
@@ -65,28 +64,29 @@ export default function Users() {
             <tr>
               <th className="px-6 py-4 font-medium">User</th>
               <th className="px-6 py-4 font-medium">Role</th>
-              <th className="px-6 py-4 font-medium">VIP</th>
               <th className="px-6 py-4 font-medium">Số dư</th>
-              <th className="px-6 py-4 font-medium">Trạng thái</th>
+              <th className="px-6 py-4 font-medium">Trạng thái Ví</th>
               <th className="px-6 py-4 font-medium text-right">Hành động</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-white/[0.04]">
             {isLoading ? (
               <tr>
-                <td colSpan={6} className="text-center py-10 text-[#92929F]">
+                <td colSpan={5} className="text-center py-10 text-[#92929F]">
                   Đang tải...
                 </td>
               </tr>
             ) : userList.length === 0 ? (
               <tr>
-                <td colSpan={6} className="text-center py-10 text-[#92929F]">
+                <td colSpan={5} className="text-center py-10 text-[#92929F]">
                   Không có dữ liệu.
                 </td>
               </tr>
             ) : (
               userList.map((u: any) => {
                 const userName = u.fullName || u.name || "Người dùng";
+                const isWalletLocked = u.wallet?.isLocked;
+
                 return (
                   <tr
                     key={u.id}
@@ -117,42 +117,36 @@ export default function Users() {
                         {u.role}
                       </span>
                     </td>
-                    <td className="px-6 py-4">
-                      <VipBadge level={u.vipLevel ?? 0} />
-                    </td>
                     <td className="px-6 py-4 font-medium text-[#F5F5F7]">
-                      {formatCurrency(u.balance ?? u.wallet?.balance ?? 0)}
+                      {formatCurrency(u.wallet?.balance ?? 0)}
                     </td>
                     <td className="px-6 py-4">
-                      {u.status === "ACTIVE" ? (
-                        <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-400">
-                          <div className="h-1.5 w-1.5 rounded-full bg-emerald-400" />{" "}
-                          Hoạt động
-                        </span>
-                      ) : (
+                      {isWalletLocked ? (
                         <span className="flex items-center gap-1.5 text-xs font-medium text-rose-400">
                           <div className="h-1.5 w-1.5 rounded-full bg-rose-400" />{" "}
                           Bị khóa
                         </span>
+                      ) : (
+                        <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-400">
+                          <div className="h-1.5 w-1.5 rounded-full bg-emerald-400" />{" "}
+                          Bình thường
+                        </span>
                       )}
                     </td>
                     <td className="px-6 py-4 text-right">
-                      {u.status === "ACTIVE" ? (
+                      {/* Nếu ví bị khóa thì hiện nút Mở Khóa */}
+                      {isWalletLocked ? (
                         <button
-                          onClick={() => handleToggleStatus(u.id, u.status)}
-                          className="p-2 text-[#92929F] hover:text-rose-400 transition"
-                          title="Khóa"
+                          onClick={() => handleUnlockWallet(u.id)}
+                          className="px-3 py-1.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-lg text-xs font-medium hover:bg-emerald-500/20 transition"
+                          title="Mở khóa ví"
                         >
-                          <Ban className="h-4 w-4" />
+                          <Unlock className="h-4 w-4 inline mr-1" /> Mở khóa ví
                         </button>
                       ) : (
-                        <button
-                          onClick={() => handleToggleStatus(u.id, u.status)}
-                          className="p-2 text-[#92929F] hover:text-emerald-400 transition"
-                          title="Mở khóa"
-                        >
-                          <Unlock className="h-4 w-4" />
-                        </button>
+                        <span className="text-xs text-[#92929F] italic flex items-center justify-end gap-1">
+                          <Lock className="h-3 w-3" /> Ví an toàn
+                        </span>
                       )}
                     </td>
                   </tr>
@@ -163,7 +157,6 @@ export default function Users() {
         </table>
       </div>
 
-      {/* THÊM NÚT PHÂN TRANG */}
       {!isLoading && totalPages > 1 && (
         <div className="flex items-center justify-center gap-6 mt-6 pt-6 border-t border-white/[0.08]">
           <button
