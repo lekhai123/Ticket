@@ -24,7 +24,10 @@ WORKDIR /app
 ENV NODE_ENV=production
 # Copy các artifact cần thiết từ builder
 COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/dist ./dist
+
+# Đổi /app/dist thành /app/dist-api
+COPY --from=builder /app/dist-api ./dist-api
 COPY --from=builder /app/prisma ./prisma
-# Lệnh khởi chạy worker (ví dụ: node dist/queues/mailWorker.js)
-CMD ["node", "dist/queues/mailWorker.js"]
+
+# ✅ SỬA Ở ĐÂY: Lệnh CMD cũng phải trỏ đúng vào dist-api
+CMD ["node", "dist-api/queues/mailWorker.mjs"]
