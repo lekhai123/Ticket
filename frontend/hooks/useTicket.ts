@@ -8,10 +8,10 @@ export const useTicket = () => {
     mutationFn: (payload: CreateBookingPayload) =>
       bookingApi.createBooking(payload),
     onSuccess: (_, variables) => {
+      // Dùng key gốc ["wallet"] và ["my-tickets"] để xóa TẤT CẢ các cache con liên quan
       queryClient.invalidateQueries({ queryKey: ["wallet"] });
+      queryClient.invalidateQueries({ queryKey: ["my-tickets"] });
       queryClient.invalidateQueries({ queryKey: ["trip", variables.tripId] });
-      queryClient.invalidateQueries({ queryKey: ["tickets", "my-tickets"] });
-      queryClient.invalidateQueries({ queryKey: ["bookings", "my-tickets"] });
     },
   });
 
@@ -19,7 +19,8 @@ export const useTicket = () => {
     mutationFn: (ticketId: number) => bookingApi.cancelBooking(ticketId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["wallet"] });
-      queryClient.invalidateQueries({ queryKey: ["tickets", "my-tickets"] });
+      queryClient.invalidateQueries({ queryKey: ["my-tickets"] });
+      queryClient.invalidateQueries({ queryKey: ["trips"] }); // Cập nhật lại danh sách chuyến đi
     },
   });
 

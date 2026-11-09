@@ -27,11 +27,13 @@ export default function Wallet() {
     queryFn: () =>
       walletApi.getTransactions(user!.id).then((res: any) => res.data),
     enabled: !!user?.id,
+    staleTime: 0, // Luôn fetch mới
+    refetchOnWindowFocus: true, // Fetch lại khi quay lại tab
   });
 
   const transactionList = txData?.transactions || txData || [];
 
-  // ✅ Đã xóa hàm handleTopUp thủ công
+  //  Đã xóa hàm handleTopUp thủ công
 
   const handlePayOS = async () => {
     const amount = Number(topUpAmount);

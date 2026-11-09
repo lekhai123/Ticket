@@ -48,6 +48,7 @@ export default function Profile() {
     mutationFn: (ticketId: number) => bookingApi.cancelBooking(ticketId),
     onSuccess: (res) => {
       alert(res.message || "Hủy vé thành công và đã hoàn tiền vào ví!");
+      // Tải lại toàn bộ dữ liệu liên quan đến Vé và Ví
       queryClient.invalidateQueries({ queryKey: ["my-tickets"] });
       queryClient.invalidateQueries({ queryKey: ["wallet"] });
       queryClient.invalidateQueries({ queryKey: ["trips"] });
@@ -207,7 +208,7 @@ export default function Profile() {
               <LogOut className="mr-2 h-4 w-4" /> Đăng xuất
             </Button>
 
-            {/* ✅ SỬA LỖI 2 ICON XOAY: Chỉ dùng isLoading của Button, xóa Loader2 thủ công */}
+            {/* SỬA LỖI 2 ICON XOAY: Chỉ dùng isLoading của Button, xóa Loader2 thủ công */}
             <Button
               onClick={handleRegisterPasskey}
               disabled={isRegisteringPasskey}
@@ -323,7 +324,7 @@ export default function Profile() {
                 );
               })}
 
-              {/* ✅ PHÂN TRANG VÉ */}
+              {/* PHÂN TRANG VÉ */}
               {(meta?.totalPages || 1) > 1 && (
                 <div className="flex items-center justify-center gap-6 mt-8 pt-6 border-t border-white/[0.08]">
                   <button
