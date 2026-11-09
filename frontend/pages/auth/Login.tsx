@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -7,7 +7,7 @@ import { Input } from "../../components/ui/Input";
 import { Button } from "../../components/ui/Button";
 import { useAuth } from "../../hooks/useAuth";
 import { usePasskey } from "../../hooks/usePasskey";
-import { Fingerprint } from "lucide-react"; //Thêm icon
+import { Fingerprint } from "lucide-react";
 
 const loginSchema = z.object({
   email: z.string().email("Email không đúng định dạng"),
@@ -19,22 +19,25 @@ type LoginForm = z.infer<typeof loginSchema>;
 
 export default function Login() {
   const { login, isLoggingIn } = useAuth();
-  const { loginWithPasskey } = usePasskey(); // Khởi tạo hook
+  const { loginWithPasskey } = usePasskey();
   const navigate = useNavigate();
   const location = useLocation();
+
+  // ✅ Thêm state loading cho Passkey
+  const [isPasskeyLoading, setIsPasskeyLoading] = useState(false);
 
   const {
     register,
     handleSubmit,
     setError,
-    watch, // ✅ Thêm watch để lấy email
+    watch,
     formState: { errors },
   } = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
     defaultValues: { email: "", password: "", rememberMe: false },
   });
 
-  const emailValue = watch("email"); //Theo dõi giá trị email
+  const emailValue = watch("email");
 
   const onSubmit = async (data: LoginForm) => {
     try {
@@ -43,12 +46,8 @@ export default function Login() {
         password: data.password,
         rememberMe: data.rememberMe,
       });
-
       const from = (location.state as any)?.from?.pathname;
-      if (from) {
-        navigate(from, { replace: true });
-        return;
-      }
+      if (from) return navigate(from, { replace: true });
       navigate(result.user.role === "ADMIN" ? "/admin" : "/", {
         replace: true,
       });
@@ -57,19 +56,24 @@ export default function Login() {
     }
   };
 
-  //Hàm xử lý đăng nhập bằng Passkey
   const handlePasskeyLogin = async () => {
     if (!emailValue) {
       return alert(
         "Vui lòng nhập Email trước khi đăng nhập bằng Vân tay/FaceID!",
       );
     }
-    const res = await loginWithPasskey(emailValue);
-    if (res.success) {
-      const from = (location.state as any)?.from?.pathname;
-      navigate(from || "/", { replace: true });
-    } else {
-      alert("❌ " + res.message);
+
+    setIsPasskeyLoading(true); // ✅ Bật loading
+    try {
+      const res = await loginWithPasskey(emailValue);
+      if (res.success) {
+        const from = (location.state as any)?.from?.pathname;
+        navigate(from || "/", { replace: true });
+      } else {
+        alert("❌ " + res.message);
+      }
+    } finally {
+      setIsPasskeyLoading(false); // ✅ Tắt loading dù thành công hay thất bại
     }
   };
 
@@ -83,6 +87,7 @@ export default function Login() {
       </p>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+        {/* ... (Giữ nguyên các Input Email, Password, RememberMe) ... */}
         <div className="space-y-1.5">
           <label className="text-sm font-medium text-[#F5F5F7]">Email</label>
           <Input
@@ -158,6 +163,7 @@ export default function Login() {
         <Button
           type="button"
           onClick={handlePasskeyLogin}
+          isLoading={isPasskeyLoading} // ✅ Hiệu ứng loading
           className="w-full bg-[#15151B] border border-white/[0.08] text-[#F5F5F7] hover:bg-white/[0.04]"
         >
           <Fingerprint className="mr-2 h-5 w-5 text-[#8B5CF6]" />

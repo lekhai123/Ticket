@@ -10,7 +10,7 @@ import {
 import { useAuthStore } from "../../store/authStore";
 import { useWallet } from "../../hooks/useWallet";
 import { walletApi } from "../../api/wallet.api";
-import axiosClient from "../../api/axiosClient"; // ✅ Thêm import
+import axiosClient from "../../api/axiosClient";
 import { formatCurrency, formatDate } from "../../utils/format";
 import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
@@ -18,11 +18,9 @@ import { cn } from "../../utils/cn";
 
 export default function Wallet() {
   const user = useAuthStore((state) => state.user);
-  const { balance, isLoadingBalance, topUp, isToppingUp } = useWallet(
-    user?.id || 0,
-  );
+  const { balance, isLoadingBalance } = useWallet(user?.id || 0);
   const [topUpAmount, setTopUpAmount] = useState("");
-  const [isCreatingPayOS, setIsCreatingPayOS] = useState(false); // ✅ State cho PayOS
+  const [isCreatingPayOS, setIsCreatingPayOS] = useState(false);
 
   const { data: txData, isLoading: isTxLoading } = useQuery({
     queryKey: ["wallet", "transactions", user?.id],
@@ -33,20 +31,8 @@ export default function Wallet() {
 
   const transactionList = txData?.transactions || txData || [];
 
-  // Nạp tiền thủ công (Code cũ)
-  const handleTopUp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const amount = Number(topUpAmount);
-    if (!amount || amount < 10000) return alert("Số tiền tối thiểu là 10,000đ");
-    try {
-      await topUp(amount);
-      setTopUpAmount("");
-    } catch (err: any) {
-      alert(err.message || "Nạp tiền thất bại");
-    }
-  };
+  // ✅ Đã xóa hàm handleTopUp thủ công
 
-  // ✅ Nạp tiền qua PayOS
   const handlePayOS = async () => {
     const amount = Number(topUpAmount);
     if (!amount || amount < 10000) {
@@ -57,7 +43,6 @@ export default function Wallet() {
     try {
       const res = await axiosClient.post("/payments/create", { amount });
       if (res.data?.checkoutUrl) {
-        // Chuyển hướng sang trang thanh toán của PayOS
         window.location.href = res.data.checkoutUrl;
       }
     } catch (err: any) {
@@ -141,10 +126,8 @@ export default function Wallet() {
       <h1 className="text-2xl font-semibold tracking-tight mb-8 text-[#F5F5F7]">
         Ví điện tử
       </h1>
-
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-1 space-y-6">
-          {/* Thẻ số dư */}
           <div className="relative h-48 w-full overflow-hidden rounded-3xl bg-gradient-to-br from-[#15151B] to-[#0D0D10] border border-white/[0.08] p-6">
             <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-[#8B5CF6]/20 blur-3xl" />
             <div className="relative z-10 flex h-full flex-col justify-between">
@@ -170,7 +153,9 @@ export default function Wallet() {
           </div>
 
           <div className="rounded-2xl border border-white/[0.08] bg-[#15151B] p-6">
-            <h3 className="font-medium text-[#F5F5F7] mb-4">Nạp tiền</h3>
+            <h3 className="font-medium text-[#F5F5F7] mb-4">
+              Nạp tiền qua PayOS
+            </h3>
             <Input
               type="number"
               placeholder="Nhập số tiền (VNĐ)..."
@@ -179,32 +164,17 @@ export default function Wallet() {
               className="mb-4 bg-[#0D0D10] border-white/[0.08] text-[#F5F5F7]"
             />
 
-            <div className="flex flex-col gap-3">
-              {/* ✅ NÚT NẠP QUA PAYOS */}
-              <Button
-                type="button"
-                onClick={handlePayOS}
-                isLoading={isCreatingPayOS}
-                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center gap-2"
-              >
-                <CreditCard className="h-4 w-4" />
-                Thanh toán qua PayOS
-              </Button>
-
-              {/* Nút nạp thủ công (Cũ) */}
-              <Button
-                type="button"
-                onClick={handleTopUp}
-                isLoading={isToppingUp}
-                className="w-full bg-[#8B5CF6] hover:bg-[#7C3AED] text-white"
-              >
-                Xác nhận nạp (Thủ công)
-              </Button>
-            </div>
+            <Button
+              type="button"
+              onClick={handlePayOS}
+              isLoading={isCreatingPayOS}
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center gap-2"
+            >
+              <CreditCard className="h-4 w-4" /> Thanh toán qua PayOS
+            </Button>
           </div>
         </div>
-
-        {/* Lịch sử */}
+        {/* Lịch sử (Giữ nguyên) */}
         <div className="lg:col-span-2 rounded-3xl border border-white/[0.08] bg-[#15151B] p-6">
           <h2 className="text-lg font-medium mb-6 text-[#F5F5F7]">
             Lịch sử giao dịch
