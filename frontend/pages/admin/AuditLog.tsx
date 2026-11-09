@@ -10,7 +10,6 @@ import {
 import { useAuditLogs } from "../../hooks/useAudit";
 import { Input } from "../../components/ui/Input";
 import { formatDate } from "../../utils/format";
-import { cn } from "../../utils/cn";
 
 export default function AuditLog() {
   const [search, setSearch] = useState("");
@@ -71,16 +70,32 @@ export default function AuditLog() {
               </tr>
             ) : (
               logsList.map((log: any) => {
-                // Lấy tên hiển thị của User (nếu có) hoặc fallback về ID
-                const userName =
-                  log.user?.fullName || log.user?.email || `ID: ${log.userId}`;
+                const action = String(log.action);
 
-                // Lấy thông tin người thực hiện (Admin) từ trong newData (nếu có)
-                const adminId = log.newData?.performedByAdminId;
+                // 1. Phân loại hành động
+                const isMassGift = action === "MASS_GIFT_EXECUTE";
                 const isSystemAction =
-                  !adminId ||
-                  String(log.action).startsWith("SYSTEM_") ||
-                  String(log.action).startsWith("AIOPS_");
+                  action.startsWith("SYSTEM_") || action.startsWith("AIOPS_");
+                const isAdminAction =
+                  isMassGift ||
+                  action.startsWith("ADMIN_") ||
+                  action.startsWith("BATCH_");
+
+                // 2. Xác định Đối tượng tác động (Target)
+                let targetName = log.user?.fullName || "Khách vãng lai";
+                let targetEmail = log.user?.email || null;
+
+                if (isMassGift) {
+                  targetName = "Nhiều người dùng";
+                  targetEmail = null; // Tặng nhiều người nên không hiện email cụ thể
+                }
+
+                // 3. Xác định Người thực hiện (Actor)
+                // Ưu tiên lấy performedByAdminId, nếu là MASS_GIFT thì userId chính là Admin
+                const adminId =
+                  log.newData?.performedByAdminId ||
+                  (isMassGift ? log.userId : null);
+                const adminName = isMassGift ? log.user?.fullName : null;
 
                 return (
                   <React.Fragment key={log.id}>
@@ -106,29 +121,31 @@ export default function AuditLog() {
                         </span>
                       </td>
                       <td className="px-4 py-3">
-                        {/* Hiển thị Tên & Email của User */}
                         <div className="flex flex-col">
                           <span className="text-sm font-medium text-[#F5F5F7] flex items-center gap-1.5">
                             <User className="h-3 w-3 text-[#92929F]" />
-                            {log.user?.fullName || "Khách vãng lai"}
+                            {targetName}
                           </span>
-                          {log.user?.email && (
+                          {targetEmail && (
                             <span className="text-xs text-[#92929F]">
-                              {log.user.email}
+                              {targetEmail}
                             </span>
                           )}
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        {/* Hiển thị Admin hoặc Hệ thống */}
                         {isSystemAction ? (
                           <span className="flex items-center gap-1.5 text-xs font-medium text-amber-400">
                             <Bot className="h-3.5 w-3.5" /> Hệ thống tự động
                           </span>
-                        ) : (
+                        ) : isAdminAction ? (
                           <span className="flex items-center gap-1.5 text-xs font-medium text-rose-400">
-                            <ShieldAlert className="h-3.5 w-3.5" /> Admin #
-                            {adminId}
+                            <ShieldAlert className="h-3.5 w-3.5" />
+                            Admin {adminName ? `(${adminName})` : `#${adminId}`}
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-400">
+                            <User className="h-3.5 w-3.5" /> Người dùng
                           </span>
                         )}
                       </td>

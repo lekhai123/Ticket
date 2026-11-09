@@ -10,13 +10,13 @@ export const useAuditLogs = (filters?: {
     queryKey: ["audit-logs", filters],
     queryFn: async () => {
       const res = await auditApi.getLogs(filters);
-
-      // 🎯 Bóc tách và trả về trực tiếp mảng logs từ Object response
       return (
         (res.data as any)?.logs ||
         (res.data as any)?.data?.logs ||
         (Array.isArray(res.data) ? res.data : [])
       );
     },
+    staleTime: 0,
+    refetchOnWindowFocus: true,
   });
 };

@@ -235,6 +235,7 @@ export class AdminService {
             totalAmountSpent: totalSpent,
             reason: data.reason,
             affectedUserIds: targetUserIds,
+            performedByAdminId: data.adminUserId,
           },
           isRevoked: false,
         },
@@ -278,7 +279,6 @@ export class AdminService {
         skip,
         take: limit,
         orderBy: { createdAt: "desc" },
-        // ✅ THÊM ĐOẠN NÀY: Để lấy Tên & Email khách hàng
         include: {
           user: {
             select: { fullName: true, email: true },
