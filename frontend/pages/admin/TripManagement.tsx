@@ -8,16 +8,26 @@ export default function TripManagement() {
   const [editingTrip, setEditingTrip] = useState<Trip | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
+  // State quản lý trang hiện tại
+  const [page, setPage] = useState(1);
+
+  // Form states
   const [route, setRoute] = useState("");
   const [departureAt, setDepartureAt] = useState("");
   const [price, setPrice] = useState(250000);
   const [totalSeats, setTotalSeats] = useState(30);
   const [description, setDescription] = useState("");
 
-  const { data: trips = [], isLoading } = useQuery<Trip[], Error>({
-    queryKey: ["admin-trips"],
-    queryFn: tripApi.getAllForAdmin,
+  //  Lấy danh sách chuyến xe dành cho Admin (có phân trang)
+  const { data: response, isLoading } = useQuery({
+    queryKey: ["admin-trips", page],
+    queryFn: () => tripApi.getAllForAdmin(page, 10),
   });
+
+  const trips = response?.data || [];
+
+  //  TÁCH RIÊNG BIẾN TOTAL PAGES ĐỂ TRÁNH LỖI TYPESCRIPT UNDEFINED
+  const totalPages = response?.meta?.totalPages ?? 1;
 
   const openCreateModal = () => {
     setEditingTrip(null);
@@ -48,16 +58,21 @@ export default function TripManagement() {
         totalSeats: Number(totalSeats),
         description,
       };
-      return editingTrip
-        ? await tripApi.update(editingTrip.id, payload)
-        : await tripApi.create(payload);
+
+      if (editingTrip) {
+        return await tripApi.update(editingTrip.id, payload);
+      } else {
+        return await tripApi.create(payload);
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-trips"] });
       queryClient.invalidateQueries({ queryKey: ["trips", "default"] });
       setIsModalOpen(false);
     },
-    onError: (err: any) => alert(err.message || "Có lỗi xảy ra khi lưu!"),
+    onError: (err: any) => {
+      alert(err.message || "Có lỗi xảy ra khi lưu!");
+    },
   });
 
   const deleteMutation = useMutation({
@@ -66,7 +81,9 @@ export default function TripManagement() {
       queryClient.invalidateQueries({ queryKey: ["admin-trips"] });
       queryClient.invalidateQueries({ queryKey: ["trips", "default"] });
     },
-    onError: (err: any) => alert(err.message || "Không thể xoá chuyến xe này!"),
+    onError: (err: any) => {
+      alert(err.message || "Không thể xoá chuyến xe này!");
+    },
   });
 
   return (
@@ -167,6 +184,37 @@ export default function TripManagement() {
         </table>
       </div>
 
+      {/* NÚT PHÂN TRANG (Sử dụng biến totalPages đã tách) */}
+      {!isLoading && totalPages > 1 && (
+        <div className="flex items-center justify-center gap-6 mt-6 pt-6 border-t border-white/[0.08]">
+          <button
+            onClick={() => {
+              setPage((p) => p - 1);
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }}
+            disabled={page === 1}
+            className="px-5 py-2.5 rounded-xl border border-white/[0.08] bg-[#15151B] text-sm font-medium text-[#F5F5F7] disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white/[0.04] transition-colors"
+          >
+            Trang trước
+          </button>
+          <span className="text-sm text-[#92929F]">
+            Trang <strong className="text-[#F5F5F7]">{page}</strong> /{" "}
+            {totalPages}
+          </span>
+          <button
+            onClick={() => {
+              setPage((p) => p + 1);
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }}
+            disabled={page >= totalPages}
+            className="px-5 py-2.5 rounded-xl border border-white/[0.08] bg-[#15151B] text-sm font-medium text-[#F5F5F7] disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white/[0.04] transition-colors"
+          >
+            Trang sau
+          </button>
+        </div>
+      )}
+
+      {/* Modal Thêm / Cập nhật (Giữ nguyên) */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-3xl border border-white/[0.08] bg-[#15151B] p-6 shadow-2xl">

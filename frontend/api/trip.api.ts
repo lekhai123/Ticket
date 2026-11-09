@@ -64,8 +64,13 @@ export const tripApi = {
   async delete(id: number | string): Promise<void> {
     await axiosClient.delete(`/trips/${id}`);
   },
-  async getAllForAdmin(): Promise<Trip[]> {
-    const res = await axiosClient.get<ApiResponse<Trip[]>>("/trips/admin/all");
-    return res.data.data;
+  async getAllForAdmin(
+    page: number = 1,
+    limit: number = 10,
+  ): Promise<ApiResponse<Trip[]>> {
+    const res = await axiosClient.get<ApiResponse<Trip[]>>(
+      `/trips/admin/all?page=${page}&limit=${limit}`,
+    );
+    return res.data; // Trả về nguyên object chứa cả data và meta
   },
 };
