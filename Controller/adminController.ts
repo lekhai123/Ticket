@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 import { AdminService } from "../Service/adminService";
 import prisma from "../database/prismaClient";
+import { TicketService } from "../Service/ticketService";
 
 const catchAsync =
   (fn: (req: Request, res: Response, next: NextFunction) => Promise<any>) =>
@@ -13,7 +14,33 @@ export class AdminController {
     const stats = await AdminService.getSystemStats();
     res.status(200).json({ success: true, data: stats });
   });
+  static getTickets = catchAsync(async (req: Request, res: Response) => {
+    const page = req.query.page ? Number(req.query.page) : 1;
+    const limit = req.query.limit ? Number(req.query.limit) : 15;
+    const search = req.query.search ? String(req.query.search) : undefined;
 
+    const result = await TicketService.getAllTicketsForAdmin(
+      page,
+      limit,
+      search,
+    );
+    res
+      .status(200)
+      .json({ success: true, data: result.data, meta: result.meta });
+  });
+  static getAIAlerts = catchAsync(async (req: Request, res: Response) => {
+    // Lấy 5 cảnh báo AI gần nhất
+    const alerts = await prisma.auditLog.findMany({
+      where: { action: "AI_ANOMALY_ALERT" },
+      orderBy: { createdAt: "desc" },
+      take: 5,
+    });
+    res.status(200).json({ success: true, data: alerts });
+  });
+  static scanTickets = catchAsync(async (req: Request, res: Response) => {
+    const result = await TicketService.scanAnomalies();
+    res.status(200).json({ success: true, data: result });
+  });
   static getUsers = catchAsync(async (req: Request, res: Response) => {
     const page = req.query.page ? Number(req.query.page) : 1;
     const limit = req.query.limit ? Number(req.query.limit) : 10;

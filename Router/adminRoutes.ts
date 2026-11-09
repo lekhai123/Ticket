@@ -11,6 +11,7 @@ import {
   getAuditLogsSchema,
   getHealthSchema,
 } from "../Validation/adminValidation";
+import { TicketService } from "../Service/ticketService";
 
 const router = Router();
 
@@ -51,7 +52,43 @@ router.post("/revoke-batch", async (req, res, next) => {
     next(error);
   }
 });
+router.get("/tickets", AdminController.getTickets);
+router.get("/tickets/scan", AdminController.scanTickets);
+router.get("/cron/ticket-auditor", async (req, res) => {
+  // Bảo mật: Chỉ Vercel mới được gọi (thông qua biến CRON_SECRET)
+  const authHeader = req.headers.authorization;
+  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
 
+  try {
+    const result = await TicketService.scanAnomalies(); // Gọi hàm quét AI của bạn
+    return res.json({
+      success: true,
+      anomaliesFound: (result.anomalies as any[]).length,
+    });
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+router.get("/cron/reconciliation", async (req, res) => {
+  // Bảo mật: Chỉ Vercel mới được gọi
+  const authHeader = req.headers.authorization;
+  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  try {
+    const result = await ReconciliationService.runDailyReconciliation();
+    return res.json({
+      success: true,
+      checked: result.totalWalletsChecked,
+      mismatches: result.mismatchCount,
+    });
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message });
+  }
+});
 router.post("/reconciliation/trigger", async (req, res) => {
   try {
     const report = await ReconciliationService.runDailyReconciliation();
