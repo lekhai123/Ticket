@@ -7,24 +7,21 @@ import { rateLimit } from "../Middleware/rateLimitMiddleware";
 
 const router = Router();
 
-// Đặt vé
 router.post(
   "/",
   authenticateToken,
-  rateLimit(10, 60), // 10 lần đặt vé / phút / IP
+  rateLimit(60, 60),
   validate(createBookingSchema),
   BookingController.createBooking,
 );
 
-// Hủy vé
 router.delete(
   "/:id",
   authenticateToken,
-  rateLimit(10, 60),
+  rateLimit(60, 60),
   BookingController.cancelBooking,
 );
 
-// Xem vé
 router.get("/my-tickets", authenticateToken, BookingController.getUserTickets);
 router.get(
   "/user/:userId",

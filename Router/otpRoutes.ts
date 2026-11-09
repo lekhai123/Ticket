@@ -10,13 +10,13 @@ const router = Router();
 router.post(
   "/send",
   checkIpBlacklist,
-  rateLimit(3, 60), // 3 lần gửi OTP / phút
+  rateLimit(10, 60),
   OtpController.sendOTP,
 );
 router.post(
   "/verify",
   checkIpBlacklist,
-  rateLimit(5, 60), // 5 lần nhập OTP / phút (Chống dò mã)
+  rateLimit(20, 60),
   validate(verifyOTPSchema),
   OtpController.verifyOTP,
 );

@@ -8,11 +8,10 @@ const router = Router();
 router.post(
   "/create",
   authenticateToken,
-  rateLimit(5, 60), // 5 lần tạo link thanh toán / phút
+  rateLimit(30, 60),
   PaymentController.createTopUp,
 );
 
-// Webhook của PayOS (PayOS gọi, không cần auth nhưng cần rate limit nhẹ để chống spam webhook giả)
-router.post("/webhook", rateLimit(30, 60), PaymentController.webhook);
+router.post("/webhook", rateLimit(100, 60), PaymentController.webhook);
 
 export default router;

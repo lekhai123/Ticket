@@ -16,7 +16,7 @@ router.post(
   "/:userId/topup",
   authenticateToken,
   requireAdmin,
-  rateLimit(10, 60), // Chống Admin (hoặc bot lạm dụng quyền) spam nạp tiền
+  rateLimit(30, 60),
   idempotency(86400),
   validate(topUpWalletSchema),
   WalletController.topUp,
@@ -25,7 +25,7 @@ router.post(
 router.get(
   "/:userId",
   authenticateToken,
-  rateLimit(30, 60),
+  rateLimit(200, 60),
   validate(getUserWalletSchema),
   WalletController.getBalance,
 );
@@ -33,7 +33,7 @@ router.get(
 router.get(
   "/:userId/transactions",
   authenticateToken,
-  rateLimit(20, 60),
+  rateLimit(150, 60),
   validate(getWalletTransactionsSchema),
   WalletController.getTransactions,
 );

@@ -14,23 +14,21 @@ import {
 
 const router = Router();
 
-// 1. API CÔNG KHAI
 router.get("/system-status", AdminController.getPublicHealth);
 
 router.get(
   "/",
   cacheResponse(60),
-  rateLimit(30, 60),
+  rateLimit(200, 60),
   TripController.getAllTrips,
 );
 router.post(
   "/semantic-search",
-  rateLimit(10, 60), // AI tốn token, chỉ cho 10 lần / phút
+  rateLimit(30, 60),
   validate(searchAiSchema),
   TripController.searchSemantic,
 );
 
-// 2. API ADMIN
 router.get(
   "/admin/all",
   authenticateToken,
@@ -59,6 +57,5 @@ router.delete(
   TripController.deleteTrip,
 );
 
-// 3. API LẤY CHI TIẾT
 router.get("/:id", validate(getTripParamSchema), TripController.getTripById);
 export default router;

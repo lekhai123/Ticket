@@ -17,9 +17,6 @@ import {
 
 const router = Router();
 
-// ==========================================
-// 1. CRON JOBS (ĐẶT TRÊN CÙNG ĐỂ KHÔNG BỊ DÍNH JWT)
-// ==========================================
 router.get("/cron/ticket-auditor", async (req, res) => {
   const authHeader = req.headers.authorization;
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -54,6 +51,7 @@ router.get("/cron/reconciliation", async (req, res) => {
     return res.status(500).json({ error: error.message });
   }
 });
+
 router.get("/cron/refresh-analytics", async (req, res) => {
   const authHeader = req.headers.authorization;
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -61,7 +59,6 @@ router.get("/cron/refresh-analytics", async (req, res) => {
   }
 
   try {
-    // Câu lệnh làm mới Materialized View
     await prisma.$executeRawUnsafe(`REFRESH MATERIALIZED VIEW revenue_stats;`);
     return res.json({
       success: true,
@@ -72,14 +69,9 @@ router.get("/cron/refresh-analytics", async (req, res) => {
   }
 });
 
-// ==========================================
-// 2. ADMIN ROUTES (BẮT BUỘC PHẢI CÓ JWT)
-// ==========================================
-// Từ đây trở xuống, mọi request đều phải verify JWT
 router.use(authenticateToken, requireAdmin);
 
-// Rate limit chung cho Admin (60 req/phút)
-router.use(rateLimit(60, 60));
+router.use(rateLimit(200, 60));
 
 router.get(
   "/dashboard-stats",
@@ -89,7 +81,7 @@ router.get(
 router.get("/users", validate(getUsersSchema), AdminController.getUsers);
 router.post(
   "/mass-gift",
-  rateLimit(5, 60),
+  rateLimit(20, 60),
   validate(massGiftSchema),
   AdminController.massGift,
 );
@@ -104,9 +96,9 @@ router.get(
   AdminController.getAuditLogs,
 );
 router.get("/tickets", AdminController.getTickets);
-router.get("/tickets/scan", rateLimit(10, 60), AdminController.scanTickets);
+router.get("/tickets/scan", rateLimit(30, 60), AdminController.scanTickets);
 
-router.post("/revoke-batch", rateLimit(5, 60), async (req, res, next) => {
+router.post("/revoke-batch", rateLimit(20, 60), async (req, res, next) => {
   try {
     const { batchId } = req.body;
     const adminUserId = (req as any).user?.id || (req as any).user?.userId;
@@ -124,11 +116,11 @@ router.post("/revoke-batch", rateLimit(5, 60), async (req, res, next) => {
 
 router.post(
   "/bookings/:ticketId/revoke",
-  rateLimit(10, 60),
+  rateLimit(30, 60),
   AdminController.revokeSingleTicket,
 );
 
-router.post("/reconciliation/trigger", rateLimit(3, 60), async (req, res) => {
+router.post("/reconciliation/trigger", rateLimit(10, 60), async (req, res) => {
   try {
     const report = await ReconciliationService.runDailyReconciliation();
     return res.status(200).json({
