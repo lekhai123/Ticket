@@ -43,8 +43,9 @@ Hệ thống được tổ chức theo luồng: **Client → API Gateway → Dom
    ├── TripService (Multi-Level Cache L1 RAM + L2 Redis)
    ├── BookingService (Redis Distributed Lock + DB Advisory Lock)
    ├── PaymentService (PayOS Integration & Webhook HMAC Verify)
-   ├── WalletService (Debt/Balance Guard)
+   ├── WalletService (Debt/Balance Guard & isLocked Check)
    ├── AI Proxy Service (Gemini Multi-Key Failover)
+   ├── TicketService (AI Anomaly Detection Scan)
    └── ReconciliationService (Auto-Balancing & Audit Logs)
              │
              ▼
@@ -54,12 +55,12 @@ Hệ thống được tổ chức theo luồng: **Client → API Gateway → Dom
  ├── BullMQ Mail Queue (Xử lý bất đồng bộ)
  ├── PayOS Payment Gateway (Production)
  ├── Cloudinary Storage (Dual Cloud Fallback)
- └── Gemini Vector Engine (Tìm kiếm ngữ nghĩa)
+ └── Gemini Vector Engine (Tìm kiếm ngữ nghĩa & Quét bất thường)
 ```
 
 ---
 
-## 🔐 2. Tính Năng Bảo Mật Nổi Bật (Security Features)
+## 🔐 2. Tính Năng Bảo Mật & Kiểm Soát Tài Chính
 
 Hệ thống được xây dựng với triết lý **Zero-Trust** và bảo vệ dữ liệu đa lớp.
 
@@ -67,7 +68,7 @@ Hệ thống được xây dựng với triết lý **Zero-Trust** và bảo v�
 
 - Người dùng có thể đăng nhập bằng **Vân tay, Face ID hoặc Windows Hello** thay vì mật khẩu truyền thống.
 - Loại bỏ hoàn toàn rủi ro **Phishing** và **Credential Stuffing** vì khóa riêng tư không bao giờ rời khỏi thiết bị.
-- Tuân thủ chuẩn **WebAuthn/FIDO2** của W3C.
+- Đã tối ưu hóa tương thích: Thêm `userDisplayName` để hoạt động mượt mà trên Safari và Brave (khắc phục lỗi nhận diện trên Chrome iOS).
 
 ### 2.2. JWT Hiện Đại với Refresh Token Rotation & Revocation
 
@@ -75,32 +76,24 @@ Hệ thống được xây dựng với triết lý **Zero-Trust** và bảo v�
 - **Refresh Token Rotation:** Mỗi lần refresh, token cũ bị thu hồi và cấp cặp token mới.
 - **Revocation List (Redis):** Khi logout, cả Access và Refresh Token bị đưa vào blacklist trên Redis để vô hiệu hóa ngay lập tức.
 
-### 2.3. Application-Level Encryption (ALE) – Mã Hóa Dữ Liệu Nhạy Cảm
+### 2.3. Application-Level Encryption (ALE)
 
 - Các trường PII như **Số điện thoại** được mã hóa bằng **AES-256-GCM** trước khi ghi vào PostgreSQL.
 - Ngay cả khi Database bị rò rỉ, kẻ tấn công cũng không thể đọc được dữ liệu gốc.
-- Sử dụng Prisma Middleware để tự động mã hóa/giải mã trong suốt.
 
-### 2.4. Bảo Mật Webhook Thanh Toán (PayOS)
+### 2.4. Bảo Vệ Dòng Tiền & Khóa Ví Tự Động (Financial Guardrails)
 
-- Tích hợp cổng thanh toán **PayOS** (VietQR) để nạp tiền vào ví.
-- Xác thực chữ ký **HMAC-SHA256** trên mọi webhook nhận được, chống giả mạo số tiền và yêu cầu thanh toán.
-- Cơ chế **Idempotency** đảm bảo không cộng tiền hai lần nếu webhook được gửi lặp lại.
-
-### 2.5. Các Lớp Bảo Vệ Khác
-
-- **IP Guard:** Chặn các IP nằm trong danh sách đen.
-- **Rate Limiting:** Giới hạn tần suất yêu cầu để chống spam và brute-force.
-- **Zod Validation:** Kiểm tra schema đầu vào của mọi request.
-- **Audit Log:** Ghi lại toàn bộ thao tác nhạy cảm để truy vết.
+- **Khóa ví tự động (AIOps):** Khi module Đối soát phát hiện số dư ví bị âm hoặc sai lệch so với Audit Log, hệ thống sẽ tự động gán cờ `isLocked = true` và ghi log.
+- **Chặn giao dịch:** Mọi API liên quan đến Mua vé (`BookingService`) và Nạp tiền (`WalletService`) đều bắt buộc kiểm tra `isLocked`. Nếu ví bị khóa, hệ thống trả về lỗi `403 Forbidden`.
+- **Quyền hạn chặt chẽ:** Hệ thống không cho phép Admin tự khóa ví (chỉ AI được phép). Admin chỉ có quyền **Mở khóa ví** (Unlock) thủ công sau khi đã xác minh.
 
 ---
 
-## ⚡ 3. Tính Năng Kỹ Thuật Cốt Lõi (Core Technical Features)
+## ⚡ 3. Tính Năng Kỹ Thuật Cốt Lõi
 
 ### 3.1. High Availability với Dual Redis & Auto-Failover
 
-- Thiết lập song song cụm **Redis Primary** và **Redis Backup**. Nếu Primary gặp sự cố, hệ thống tự động chuyển sang Backup, đảm bảo không gián đoạn dịch vụ.
+- Thiết lập song song cụm **Redis Primary** và **Redis Backup**. Nếu Primary gặp sự cố, hệ thống tự động chuyển sang Backup.
 
 ### 3.2. Multi-Level Cache (L1 RAM + L2 Dual Redis)
 
@@ -109,21 +102,12 @@ Hệ thống được xây dựng với triết lý **Zero-Trust** và bảo v�
 ### 3.3. Redis Distributed Lock + DB Advisory Lock (Chống Race Condition)
 
 - Sử dụng **Redis Lock** kết hợp **Postgres Advisory Lock** trong `prisma.$transaction` để đảm bảo an toàn tuyệt đối khi nhiều người dùng cùng đặt một ghế tại cùng một thời điểm.
-- Đã được kiểm chứng bằng **Integration Test** mô phỏng 2 request đồng thời.
 
-### 3.4. Hàng Đợi Bất Đồng Bộ với BullMQ
+### 3.4. AI Quản Lý Vé & Tự Động Phát Hiện Bất Thường (Anomaly Detection)
 
-- Tác vụ gửi OTP/Email được đẩy vào **Redis Queue** (BullMQ) để xử lý nền, giúp API phản hồi nhanh và không phụ thuộc vào độ trễ của dịch vụ email bên thứ ba.
-
-### 3.5. Tìm Kiếm Ngữ Nghĩa & Gemini AI Failover
-
-- Hỗ trợ tìm chuyến bằng ngôn ngữ tự nhiên thông qua **vector embeddings** (pgvector).
-- Cơ chế **Multi-Key Rotation** tự động xoay vòng API Key Gemini khi gặp sự cố hoặc hết hạn mức.
-
-### 3.6. Đối Soát Tài Chính Tự Động (Auto-Reconciliation)
-
-- Định kỳ đối chiếu số dư ví người dùng với toàn bộ lịch sử giao dịch và Audit Logs.
-- Tự động phát hiện sai lệch dòng tiền và khóa ví nếu cần, kèm theo phân tích nguyên nhân gốc bằng AI.
+- **Quản lý Vé (Admin):** Giao diện phân trang, tìm kiếm thông minh và hỗ trợ thu hồi vé lẻ (hoàn tiền chính xác).
+- **Quét AI tự động:** Hệ thống tự động quét các vé có dấu hiệu bất thường (VD: vé 0đ, thanh toán thiếu) so với giá gốc của chuyến xe. Các vé lỗi được highlight màu đỏ để Admin xử lý.
+- **Cảnh báo tự động:** AI sẽ tự động phân tích nguyên nhân và gắn cảnh báo lên đầu trang Quản lý vé, giúp Admin không bỏ lỡ các giao dịch rủi ro.
 
 ---
 
@@ -142,16 +126,13 @@ Dự án sử dụng **Jest** kết hợp **Supertest** để chạy các bài k
 ### 4.2. Cách chạy Test
 
 ```bash
-# Cài đặt dependencies (nếu chưa)
 npm install
-
-# Chạy toàn bộ test suite
 npm run test
 ```
 
 ### 4.3. Báo Cáo Độ Phủ Kiểm Thử (Test Coverage)
 
-Hệ thống đã được kiểm thử tự động với kết quả **100% Pass (5/5 tests)**. Dưới đây là kết quả độ phủ mã nguồn của các module quan trọng:
+Hệ thống đã được kiểm thử tự động với kết quả **100% Pass (5/5 tests)**.
 
 | Tên Module                    | Statements (Câu lệnh) | Branches (Nhánh) | Functions (Hàm) | Lines (Dòng) |
 | :---------------------------- | :-------------------: | :--------------: | :-------------: | :----------: |
@@ -161,64 +142,48 @@ Hệ thống đã được kiểm thử tự động với kết quả **100% Pa
 | **Utils/redisLock.ts**        |        64.28%         |        0%        |       0%        |    64.28%    |
 | **Tổng quan dự án**           |      **30.66%**       |    **12.56%**    |   **17.45%**    |  **31.18%**  |
 
-## _(Ghi chú: Độ phủ tổng quan 30.66% là do hệ thống có rất nhiều file UI, Service phụ trợ và Job chưa được đưa vào diện test trong đồ án này. Các module cốt lõi về Bảo mật và Giao dịch đều đạt độ phủ >80%)._
+_(Ghi chú: Độ phủ tổng quan 30.66% là do hệ thống có rất nhiều file UI, Service phụ trợ và Job chưa được đưa vào diện test trong đồ án này. Các module cốt lõi về Bảo mật và Giao dịch đều đạt độ phủ >80%)._
+
+---
 
 ## 📂 5. Cấu Trúc Thư Mục Dự Án
 
 ```text
 .
-├── .vscode/                      # Cấu hình VS Code
-├── ai-service/                   # Dịch vụ AI
 ├── api/                          # Serverless entrypoint cho Vercel
 ├── config/                       # Cấu hình Cloudinary, Env, JWT, Resend
 ├── Controller/                   # Điều phối Request & Response
 │   ├── adminController.ts
 │   ├── authController.ts
 │   ├── bookingController.ts
-│   ├── otpController.ts
 │   ├── paymentController.ts      # Xử lý thanh toán PayOS
-│   ├── tripController.ts
-│   ├── userController.ts
-│   ├── walletController.ts
+│   ├── ticketController.ts       # Quản lý vé & AI Scan
 │   └── webauthnController.ts     # Xử lý Passkeys
 ├── database/                     # Khởi tạo Prisma Client singleton
 ├── frontend/                     # Giao diện người dùng (React + Vite)
-├── jobs/                         # Tiến trình đối soát định kỳ
-├── Middleware/                   # Pipeline bảo mật (Auth, Idempotency, IP Guard, v.v.)
+├── jobs/                         # Tiến trình chạy ngầm
+│   ├── reconciliationJob.ts      # Cron đối soát tài chính
+│   └── ticketAuditorJob.ts       # Cron quét vé bất thường
+├── Middleware/                   # Pipeline bảo mật
 ├── prisma/                       # Schema và migrations
 ├── queues/                       # Hàng đợi BullMQ
 ├── Router/                       # Khai báo các tuyến API
 ├── Service/                      # Logic nghiệp vụ chi tiết
 │   ├── aiProxy.service.ts
-│   ├── aiReconciliationAnalyzer.service.ts
-│   ├── authService.ts
 │   ├── bookingService.ts
-│   ├── cacheService.ts
-│   ├── cloudinaryService.ts
-│   ├── otpService.ts
-│   ├── paymentService.ts         # Tích hợp PayOS
 │   ├── reconciliationService.ts
-│   ├── revocationService.ts
-│   ├── tripService.ts
-│   ├── userService.ts
-│   └── walletService.ts
+│   ├── ticketService.ts          # Logic quản lý vé Admin
+│   ├── walletService.ts          # Quản lý ví & Chặn giao dịch
+│   └── ...
 ├── tests/                        # Bộ kiểm thử tự động (Jest + Supertest)
-│   ├── auth.test.ts
-│   ├── booking.test.ts
-│   └── payos.test.ts
 ├── Utils/                        # Tiện ích
 │   ├── encryption.ts             # Mã hóa AES-256-GCM
 │   ├── payos.ts                  # Class xử lý chữ ký PayOS
 │   └── redisLock.ts              # Dual Redis & Lock helper
 ├── Validation/                   # Schema Zod
 ├── .env                          # Biến môi trường
-├── .env.example                  # Mẫu biến môi trường
 ├── app.ts                        # Cấu hình Express App
-├── jest.config.js                # Cấu hình Jest
-├── package.json
-├── README.md
 ├── server.ts                     # Khởi tạo Express Server
-├── tsconfig.json
 └── vercel.json
 ```
 
@@ -226,13 +191,11 @@ Hệ thống đã được kiểm thử tự động với kết quả **100% Pa
 
 ## ⚙️ 6. Cấu Hình Môi Trường (.env)
 
-Tạo file `.env` tại thư mục gốc của Backend và cấu hình các biến sau (dựa trên file `.env.example`):
-
 ```env
 # Database
 DATABASE_URL="postgresql://postgres:password@host:5432/db_name"
 
-# Gemini AI
+# Gemini AI (Dùng cho Semantic Search & Quét bất thường)
 GEMINI_API_KEY="AIzaSy..."
 GEMINI_SECONDARY_KEY="AIzaSy..."
 
@@ -267,10 +230,13 @@ fromEmail="abc@gmail.com"
 WEBAUTHN_RP_ID="ticket-lekhai.vercel.app"
 WEBAUTHN_ORIGIN="https://ticket-lekhai.vercel.app"
 
-# PayOS Payment Gateway (Production - Thanh toán thật)
+# PayOS Payment Gateway (Production)
 PAYOS_CLIENT_ID="your_client_id"
 PAYOS_API_KEY="your_api_key"
 PAYOS_CHECKSUM_KEY="your_checksum_key"
+
+# Bảo mật cho Cron Job (Dùng cho Vercel hoặc Cron bên ngoài gọi API)
+CRON_SECRET="nexusticket_secret_123456"
 ```
 
 ---
@@ -280,18 +246,11 @@ PAYOS_CHECKSUM_KEY="your_checksum_key"
 ### 7.1. Backend
 
 ```bash
-# Cài đặt dependencies
 npm install
-
-# Đồng bộ Prisma Schema với Database
 npx prisma generate
 npx prisma db push
-
-# Chạy server phát triển
 npm run dev
 ```
-
-Backend mặc định chạy tại `http://localhost:3000`.
 
 ### 7.2. Frontend
 
@@ -301,26 +260,25 @@ npm install
 npm run dev
 ```
 
-Frontend hiển thị tại `http://localhost:5173`.
+### 7.3. Cấu hình Cron Job (Quan trọng trên Vercel)
 
-### 7.3. Kiểm Thử (Testing)
+Vì gói Hobby của Vercel giới hạn Cron Job 1 lần/ngày, hệ thống sử dụng kết hợp:
 
-```bash
-npm run test
-```
+1. **Đối soát tài chính (03:00 AM hàng ngày):** Có thể dùng Vercel Cron (khai báo trong `vercel.json`) hoặc Cron ngoài.
+2. **AI Quét vé bất thường (Mỗi 15 phút):** Bắt buộc dùng dịch vụ ngoài (như `cron-job.org` hoặc `Upstash QStash`).
+   - **URL gọi:** `GET https://[domain-cua-ban]/api/admin/cron/ticket-auditor`
+   - **Header bảo mật:** `Authorization: Bearer [CRON_SECRET_CỦA_BẠN]`
 
 ---
 
 ## 💡 8. Ghi Chú & Lưu Ý
 
-- **Thanh toán thật:** Hệ thống đang chạy PayOS ở môi trường Production. Mọi giao dịch đều trừ tiền thật. Nếu có sự cố, vui lòng liên hệ số điện thoại in trên banner cảnh báo.
-- **Passkeys trên Vercel:** Đảm bảo biến môi trường `WEBAUTHN_RP_ID` và `WEBAUTHN_ORIGIN` được cấu hình chính xác trên Vercel Dashboard.
-- **Dual Redis:** Cần cấu hình cả `REDIS_URL` và `REDIS_URL_BACKUP` để tận dụng tính năng High Availability.
-- **Jest & ECONNRESET:** Khi chạy test, các log `ECONNRESET` từ Redis Worker là bình thường do Jest `forceExit`, không ảnh hưởng đến kết quả.
-- **Thư mục `coverage/`:** Nhớ thêm thư mục này vào file `.gitignore` để tránh push các file báo cáo test lên Git.
+- **Thanh toán thật:** Hệ thống đang chạy PayOS ở môi trường Production. Mọi giao dịch đều trừ tiền thật.
+- **Passkeys trên Vercel:** Đảm bảo biến môi trường `WEBAUTHN_RP_ID` và `WEBAUTHN_ORIGIN` được cấu hình chính xác.
+- **Trình duyệt hỗ trợ Passkeys:** Trên iOS, khuyên dùng Safari hoặc Brave để tránh lỗi API WebAuthn của Chrome.
 
 ---
 
-_Cập nhật lần cuối: 9/11/2026_
+_Cập nhật lần cuối: 17h17,09/11/2026_  
 _Tác giả: Lê Hoàng Khải_  
 _Repository: [https://github.com/lekhai123/Ticket](https://github.com/lekhai123/Ticket)_
