@@ -150,6 +150,7 @@ export class AdminService {
     let targetUsers: {
       id: number;
       email: string;
+      fullName: string;
       wallet: { id: number; balance: any } | null;
     }[] = [];
 
@@ -159,6 +160,7 @@ export class AdminService {
         select: {
           id: true,
           email: true,
+          fullName: true,
           wallet: { select: { id: true, balance: true } },
         },
       });
@@ -169,6 +171,7 @@ export class AdminService {
         select: {
           id: true,
           email: true,
+          fullName: true,
           wallet: { select: { id: true, balance: true } },
         },
       });
@@ -241,6 +244,8 @@ export class AdminService {
             reason: data.reason,
             affectedUserIds: targetUserIds,
             performedByAdminId: data.adminUserId,
+            targetUserName:
+              validUsers.length === 1 ? validUsers[0].fullName : null,
           },
           isRevoked: false,
         },

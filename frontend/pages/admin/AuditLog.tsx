@@ -73,21 +73,25 @@ export default function AuditLog() {
                 const action = String(log.action);
 
                 const isMassGift = action === "MASS_GIFT_EXECUTE";
+                const isBatchRevoke = action === "BATCH_REVOKE_EXECUTE";
                 const isSystemAction =
                   action.startsWith("SYSTEM_") || action.startsWith("AIOPS_");
                 const isAdminAction =
                   isMassGift ||
+                  isBatchRevoke ||
                   action.startsWith("ADMIN_") ||
                   action.startsWith("BATCH_");
 
                 let targetName = log.user?.fullName || "Khách vãng lai";
                 let targetEmail = log.user?.email || null;
 
-                if (isMassGift) {
+                if (isMassGift || isBatchRevoke) {
                   const affectedIds =
                     (log.newData as any)?.affectedUserIds || [];
+                  const targetUserName = (log.newData as any)?.targetUserName;
+
                   if (affectedIds.length === 1) {
-                    targetName = `User #${affectedIds[0]}`;
+                    targetName = targetUserName || `User #${affectedIds[0]}`;
                     targetEmail = null;
                   } else if (affectedIds.length > 1) {
                     targetName = `Nhiều người dùng (${affectedIds.length})`;
@@ -100,8 +104,8 @@ export default function AuditLog() {
 
                 const adminId =
                   log.newData?.performedByAdminId ||
-                  (isMassGift ? log.userId : null);
-                const adminName = isMassGift ? log.user?.fullName : null;
+                  (isAdminAction ? log.userId : null);
+                const adminName = log.user?.fullName;
 
                 return (
                   <React.Fragment key={log.id}>
