@@ -87,16 +87,20 @@ export class TripService {
   /**
    * Lấy toàn bộ chuyến xe còn hiệu lực, cache 60s.
    */
-  static async getAllTripsLogic() {
-    const cacheKey = CACHE_KEYS.ALL_TRIPS;
+  static async getAllTripsLogic(page: number = 1, limit: number = 12) {
+    const cacheKey = `trips:all:active:page:${page}:limit:${limit}`;
 
     const cached = await MultiLevelCache.get(cacheKey);
     if (cached) return cached;
 
     const now = new Date();
+    const skip = (page - 1) * limit;
+
     const trips = await prisma.trips.findMany({
       where: { departureAt: { gt: now } },
       orderBy: { departureAt: "asc" },
+      skip: skip,
+      take: limit, // Lấy tối đa 12 chuyến 1 lần
       include: {
         tickets: {
           where: { status: { in: ["HELD", "PENDING", "CONFIRMED"] } },
