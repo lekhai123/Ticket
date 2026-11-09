@@ -3,6 +3,7 @@ import { BusFront, User, Wallet, AlertTriangle } from "lucide-react";
 import { useAuthStore } from "../store/authStore";
 import { useWallet } from "../hooks/useWallet";
 import { formatCurrency } from "../utils/format";
+import SystemFooter from "../layouts/SystemFooter";
 
 export default function CustomerLayout() {
   const { user, isAuthenticated } = useAuthStore();
@@ -89,6 +90,7 @@ export default function CustomerLayout() {
       <main className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8 animate-in fade-in duration-300 flex-1">
         <Outlet />
       </main>
+      <SystemFooter />
     </div>
   );
 }
