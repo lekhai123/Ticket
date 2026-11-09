@@ -33,6 +33,7 @@ export class WebAuthnController {
         rpID,
         userID: new TextEncoder().encode(userId.toString()),
         userName: user.email,
+        userDisplayName: user!.fullName || user!.email,
         excludeCredentials: user.credentials.map((cred) => ({
           id: cred.credentialID,
           type: "public-key",
