@@ -6,6 +6,8 @@ import { RevocationService } from "../Service/revocationService";
 import { ReconciliationService } from "../Service/reconciliationService";
 import { TicketService } from "../Service/ticketService";
 import { rateLimit } from "../Middleware/rateLimitMiddleware";
+import prisma from "../database/prismaClient";
+import { initAnalyticsCron } from "../jobs/analyticsJob";
 import {
   getStatsSchema,
   getUsersSchema,
@@ -65,6 +67,8 @@ router.post("/revoke-batch", rateLimit(5, 60), async (req, res, next) => {
 
 // Cron jobs (Bảo vệ bằng CRON_SECRET, đã chặn bot)
 router.get("/cron/ticket-auditor", async (req, res) => {
+  console.log("=> CLIENT GỬI:", `[${req.headers.authorization}]`);
+  console.log("=> SERVER MONG ĐỢI:", `[Bearer ${process.env.CRON_SECRET}]`);
   const authHeader = req.headers.authorization;
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`)
     return res.status(401).json({ error: "Unauthorized" });
@@ -90,6 +94,19 @@ router.get("/cron/reconciliation", async (req, res) => {
       checked: result.totalWalletsChecked,
       mismatches: result.mismatchCount,
     });
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+router.get("/cron/analytics", async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  try {
+    await prisma.$executeRawUnsafe(`REFRESH MATERIALIZED VIEW revenue_stats;`);
+    return res.json({ success: true, message: "Đã làm mới bảng thống kê" });
   } catch (error: any) {
     return res.status(500).json({ error: error.message });
   }
