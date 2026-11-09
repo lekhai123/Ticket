@@ -5,8 +5,6 @@ import { MultiLevelCache } from "./cacheService";
 export class BookingService {
   /**
    * 1. GIỮ GHẾ VÀ TẠO VÉ
-   * Khóa 2 tầng: Redis (nhanh) + Postgres advisory lock (an toàn tuyệt đối).
-   * Advisory lock tự nhả khi transaction commit/rollback.
    */
   static async holdOrBookSeat(
     userId: number,
@@ -67,13 +65,11 @@ export class BookingService {
               throw error;
             }
 
-            // 1. Trừ tiền ví
             await tx.wallets.update({
               where: { userId },
               data: { balance: { decrement: tripPrice } },
             });
 
-            // GHI LOG GIAO DỊCH (Đặt đúng bên trong transaction)
             await tx.auditLog.create({
               data: {
                 requestId: `BOOK_TICKET_${Date.now()}`,
@@ -112,6 +108,7 @@ export class BookingService {
       await RedisLock.release(lockKey, lockToken);
     }
   }
+
   /**
    * 2. KHÁCH HÀNG CHỦ ĐỘNG HỦY VÉ (có hoàn tiền nếu đã thanh toán)
    */
@@ -133,7 +130,6 @@ export class BookingService {
       throw error;
     }
 
-    // Chặn hủy vé đã hủy / đã dùng / đã bị admin thu hồi
     if (
       ticket.status === "CANCELED" ||
       ticket.status === "USED" ||
@@ -152,9 +148,31 @@ export class BookingService {
 
       // Hoàn tiền nếu vé đã thanh toán bằng ví
       if (ticket.status === "CONFIRMED") {
+        const wallet = await tx.wallets.findUnique({ where: { userId } });
+        const currentBalance = Number(wallet?.balance || 0);
+        const refundAmount = Number(ticket.trip.price);
+
+        // 1. Cộng tiền vào ví
         await tx.wallets.update({
           where: { userId },
-          data: { balance: { increment: ticket.trip.price } },
+          data: { balance: { increment: refundAmount } },
+        });
+
+        // GHI LOG HOÀN TIỀN
+        await tx.auditLog.create({
+          data: {
+            requestId: `REFUND_TICKET_${Date.now()}`,
+            userId,
+            action: "REFUND_TICKET_PAYMENT",
+            resource: "Wallets",
+            resourceId: String(wallet?.id || userId),
+            oldData: { balance: currentBalance },
+            newData: {
+              amount: refundAmount,
+              description: `Hoàn tiền hủy vé chuyến ${ticket.trip.route} (Ghế A${ticket.seatNumber})`,
+              newBalance: currentBalance + refundAmount,
+            },
+          },
         });
       }
 
@@ -174,7 +192,6 @@ export class BookingService {
 
   /**
    * 3. ADMIN THU HỒI VÉ (có hoàn tiền nếu đã thanh toán)
-   * Đồng bộ với revocationService.revokeBatch — admin thu hồi cũng hoàn tiền.
    */
   static async adminRevokeTicket(ticketId: number) {
     const ticket = await prisma.tickets.findUnique({
@@ -202,9 +219,33 @@ export class BookingService {
 
       // Hoàn tiền nếu vé đã thanh toán bằng ví
       if (ticket.status === "CONFIRMED") {
+        const wallet = await tx.wallets.findUnique({
+          where: { userId: ticket.userId },
+        });
+        const currentBalance = Number(wallet?.balance || 0);
+        const refundAmount = Number(ticket.trip.price);
+
+        // 1. Cộng tiền vào ví
         await tx.wallets.update({
           where: { userId: ticket.userId },
-          data: { balance: { increment: ticket.trip.price } },
+          data: { balance: { increment: refundAmount } },
+        });
+
+        // GHI LOG HOÀN TIỀN
+        await tx.auditLog.create({
+          data: {
+            requestId: `ADMIN_REVOKE_REFUND_${Date.now()}`,
+            userId: ticket.userId,
+            action: "REFUND_TICKET_PAYMENT",
+            resource: "Wallets",
+            resourceId: String(wallet?.id || ticket.userId),
+            oldData: { balance: currentBalance },
+            newData: {
+              amount: refundAmount,
+              description: `Hoàn tiền vé bị thu hồi bởi Admin (Chuyến ${ticket.trip.route}, Ghế A${ticket.seatNumber})`,
+              newBalance: currentBalance + refundAmount,
+            },
+          },
         });
       }
 
