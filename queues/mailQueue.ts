@@ -1,9 +1,6 @@
 import { Queue } from "bullmq";
 import Redis from "ioredis";
 
-// ============================================================
-// TYPES
-// ============================================================
 export interface MailJobData {
   email: string;
   code: string;
@@ -24,9 +21,6 @@ export interface NotificationJobData {
 
 export type AllJobData = MailJobData | NotificationJobData;
 
-// ============================================================
-// REDIS CONNECTION
-// ============================================================
 const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
 const isTls = redisUrl.startsWith("rediss://");
 
@@ -39,14 +33,6 @@ const connection = new Redis(redisUrl, {
 
 export const mailQueue = new Queue<AllJobData>("mail-queue", { connection });
 
-// ============================================================
-// HELPERS
-// ============================================================
-
-/**
- * Đẩy job thường (dùng cho OTP, mail đơn lẻ).
- * Chỉ add vào queue → trả về gần như ngay (<50ms).
- */
 export async function sendNotificationEmail(payload: {
   email: string;
   type: NotificationJobData["type"];
@@ -60,17 +46,6 @@ export async function sendNotificationEmail(payload: {
   });
 }
 
-/**
- * Schedule DELAYED + RESET nếu jobId đã tồn tại.
- * Mục đích: gom nhiều ticket cùng batch vào 1 mail duy nhất.
- *
- * Luồng:
- *  - revoke vé 1 → add job T+30s (jobId cố định)
- *  - revoke vé 2 cùng batch → REMOVE job cũ, ADD lại T+30s
- *  - revoke vé 3 cùng batch → REMOVE job cũ, ADD lại T+30s
- *  - ...admin dừng → sau 30s job chạy → worker query tất cả vé
- *    cùng batch → render 1 mail duy nhất.
- */
 export async function scheduleNotificationWithReset(
   payload: {
     email: string;
@@ -79,20 +54,30 @@ export async function scheduleNotificationWithReset(
   },
   opts: { delayMs: number; jobId: string },
 ) {
+  // SỬA LỖI TẠI ĐÂY: BullMQ không cho phép dấu ":" trong jobId
+  // Thay thế tất cả dấu ":" bằng "-"
+  const safeJobId = opts.jobId.replace(/:/g, "-");
+
   try {
-    const existing = await mailQueue.getJob(opts.jobId);
+    const existing = await mailQueue.getJob(safeJobId);
     if (existing) {
       await existing.remove();
     }
+  } catch (err: any) {
+    console.warn(`[MAIL] Không thể xóa job cũ ${safeJobId}:`, err?.message);
+  }
+
+  try {
     await mailQueue.add("send-notification-job", payload, {
       delay: opts.delayMs,
-      jobId: opts.jobId,
+      jobId: safeJobId,
       attempts: 3,
       backoff: { type: "exponential", delay: 3000 },
       removeOnComplete: 200,
       removeOnFail: 500,
     });
+    console.log(`[MAIL] Đã xếp lịch job thành công: ${safeJobId}`);
   } catch (err: any) {
-    console.warn("[MAIL] scheduleNotificationWithReset lỗi:", err?.message);
+    console.error(`[MAIL] Lỗi khi xếp lịch job ${safeJobId}:`, err);
   }
 }

@@ -145,7 +145,7 @@ export class BookingService {
           },
           {
             delayMs: 10000,
-            jobId: `booking-notif:${effectiveBatchId}`,
+            jobId: `booking-notif-${effectiveBatchId}`, //  SỬA DẤU : THÀNH -
           },
         );
       } catch (mailErr: any) {
@@ -267,7 +267,7 @@ export class BookingService {
           },
           {
             delayMs: 30000,
-            jobId: `revoke-notif:${effectiveBatchId}`,
+            jobId: `revoke-notif-${effectiveBatchId}`, // SỬA DẤU : THÀNH -
           },
         );
       } catch (mailErr: any) {
