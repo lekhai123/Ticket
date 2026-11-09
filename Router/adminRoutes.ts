@@ -6,6 +6,7 @@ import { RevocationService } from "../Service/revocationService";
 import { ReconciliationService } from "../Service/reconciliationService";
 import { TicketService } from "../Service/ticketService";
 import { rateLimit } from "../Middleware/rateLimitMiddleware";
+import prisma from "../database/prismaClient";
 import {
   getStatsSchema,
   getUsersSchema,
@@ -48,6 +49,23 @@ router.get("/cron/reconciliation", async (req, res) => {
       success: true,
       checked: result.totalWalletsChecked,
       mismatches: result.mismatchCount,
+    });
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+router.get("/cron/refresh-analytics", async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  try {
+    // Câu lệnh làm mới Materialized View
+    await prisma.$executeRawUnsafe(`REFRESH MATERIALIZED VIEW revenue_stats;`);
+    return res.json({
+      success: true,
+      message: "Đã làm mới bảng thống kê doanh thu (Materialized View)!",
     });
   } catch (error: any) {
     return res.status(500).json({ error: error.message });
