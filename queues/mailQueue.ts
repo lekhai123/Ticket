@@ -7,7 +7,7 @@ import Redis from "ioredis";
 export interface MailJobData {
   email: string;
   code: string;
-  type: string;
+  type: "REGISTER" | "FORGOT_PASSWORD";
 }
 
 export interface NotificationJobData {
