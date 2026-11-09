@@ -3,6 +3,7 @@ import { TripController } from "../Controller/tripController";
 import { validate } from "../Middleware/validateMiddleware";
 import { cacheResponse } from "../Middleware/idempotencyMiddleware";
 import { authenticateToken, requireAdmin } from "../Middleware/authMiddleware";
+import { rateLimit } from "../Middleware/rateLimitMiddleware"; //  Import
 import {
   createTripSchema,
   updateTripSchema,
@@ -12,23 +13,27 @@ import {
 
 const router = Router();
 
-// 1. API CÔNG KHAI (Dành cho User)
-router.get("/", cacheResponse(60), TripController.getAllTrips);
+// 1. API CÔNG KHAI
+router.get(
+  "/",
+  cacheResponse(60),
+  rateLimit(30, 60),
+  TripController.getAllTrips,
+);
 router.post(
   "/semantic-search",
+  rateLimit(10, 60), // AI tốn token, chỉ cho 10 lần / phút
   validate(searchAiSchema),
   TripController.searchSemantic,
 );
 
-// 2. API ADMIN (Đặt trên /:id để tránh bị nhầm)
+// 2. API ADMIN
 router.get(
   "/admin/all",
   authenticateToken,
   requireAdmin,
   TripController.getAllTripsForAdmin,
 );
-
-// 3. API THÊM / SỬA / XÓA (Dành cho Admin)
 router.post(
   "/",
   authenticateToken,
@@ -51,7 +56,7 @@ router.delete(
   TripController.deleteTrip,
 );
 
-// 4. API LẤY CHI TIẾT 1 CHUYẾN XE (Đặt ở cuối cùng)
+// 3. API LẤY CHI TIẾT
 router.get("/:id", validate(getTripParamSchema), TripController.getTripById);
 
 export default router;

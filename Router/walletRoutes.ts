@@ -2,7 +2,8 @@ import { Router } from "express";
 import { WalletController } from "../Controller/walletController";
 import { validate } from "../Middleware/validateMiddleware";
 import { idempotency } from "../Middleware/idempotencyMiddleware";
-import { authenticateToken, requireAdmin } from "../Middleware/authMiddleware"; // Thêm vào
+import { authenticateToken, requireAdmin } from "../Middleware/authMiddleware";
+import { rateLimit } from "../Middleware/rateLimitMiddleware";
 import {
   topUpWalletSchema,
   getUserWalletSchema,
@@ -11,20 +12,20 @@ import {
 
 const router = Router();
 
-// BẮT BUỘC ĐĂNG NHẬP VÀ LÀ ADMIN MỚI ĐƯỢC NẠP TIỀN
 router.post(
   "/:userId/topup",
   authenticateToken,
   requireAdmin,
+  rateLimit(10, 60), // Chống Admin (hoặc bot lạm dụng quyền) spam nạp tiền
   idempotency(86400),
   validate(topUpWalletSchema),
   WalletController.topUp,
 );
 
-// YÊU CẦU ĐĂNG NHẬP ĐỂ XEM SỐ DƯ & LỊCH SỬ
 router.get(
   "/:userId",
   authenticateToken,
+  rateLimit(30, 60),
   validate(getUserWalletSchema),
   WalletController.getBalance,
 );
@@ -32,6 +33,7 @@ router.get(
 router.get(
   "/:userId/transactions",
   authenticateToken,
+  rateLimit(20, 60),
   validate(getWalletTransactionsSchema),
   WalletController.getTransactions,
 );

@@ -1,9 +1,11 @@
 import { Router } from "express";
 import { validate } from "../Middleware/validateMiddleware";
 import { authenticateToken, requireAdmin } from "../Middleware/authMiddleware";
-import { AdminController } from "../Controller/adminController"; // Chỉ cần import mỗi class này
+import { AdminController } from "../Controller/adminController";
 import { RevocationService } from "../Service/revocationService";
 import { ReconciliationService } from "../Service/reconciliationService";
+import { TicketService } from "../Service/ticketService";
+import { rateLimit } from "../Middleware/rateLimitMiddleware";
 import {
   getStatsSchema,
   getUsersSchema,
@@ -11,12 +13,14 @@ import {
   getAuditLogsSchema,
   getHealthSchema,
 } from "../Validation/adminValidation";
-import { TicketService } from "../Service/ticketService";
 
 const router = Router();
 
-// Mọi request vào /api/admin đều phải đăng nhập và là ADMIN
+// Bảo vệ toàn bộ route Admin
 router.use(authenticateToken, requireAdmin);
+
+// Giới hạn chung cho Admin: 60 req/phút (Tránh việc spam F5 làm sập DB)
+router.use(rateLimit(60, 60));
 
 router.get(
   "/dashboard-stats",
@@ -24,7 +28,12 @@ router.get(
   AdminController.getStats,
 );
 router.get("/users", validate(getUsersSchema), AdminController.getUsers);
-router.post("/mass-gift", validate(massGiftSchema), AdminController.massGift);
+router.post(
+  "/mass-gift",
+  rateLimit(5, 60),
+  validate(massGiftSchema),
+  AdminController.massGift,
+);
 router.get(
   "/system-health",
   validate(getHealthSchema),
@@ -35,12 +44,13 @@ router.get(
   validate(getAuditLogsSchema),
   AdminController.getAuditLogs,
 );
+router.get("/tickets", AdminController.getTickets);
+router.get("/tickets/scan", rateLimit(10, 60), AdminController.scanTickets);
 
-router.post("/revoke-batch", async (req, res, next) => {
+router.post("/revoke-batch", rateLimit(5, 60), async (req, res, next) => {
   try {
     const { batchId } = req.body;
     const adminUserId = (req as any).user?.id || (req as any).user?.userId;
-
     const result = await RevocationService.revokeBatch(
       batchId,
       Number(adminUserId),
@@ -52,17 +62,14 @@ router.post("/revoke-batch", async (req, res, next) => {
     next(error);
   }
 });
-router.get("/tickets", AdminController.getTickets);
-router.get("/tickets/scan", AdminController.scanTickets);
-router.get("/cron/ticket-auditor", async (req, res) => {
-  // Bảo mật: Chỉ Vercel mới được gọi (thông qua biến CRON_SECRET)
-  const authHeader = req.headers.authorization;
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return res.status(401).json({ error: "Unauthorized" });
-  }
 
+// Cron jobs (Bảo vệ bằng CRON_SECRET, đã chặn bot)
+router.get("/cron/ticket-auditor", async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`)
+    return res.status(401).json({ error: "Unauthorized" });
   try {
-    const result = await TicketService.scanAnomalies(); // Gọi hàm quét AI của bạn
+    const result = await TicketService.scanAnomalies();
     return res.json({
       success: true,
       anomaliesFound: (result.anomalies as any[]).length,
@@ -71,13 +78,11 @@ router.get("/cron/ticket-auditor", async (req, res) => {
     return res.status(500).json({ error: error.message });
   }
 });
-router.get("/cron/reconciliation", async (req, res) => {
-  // Bảo mật: Chỉ Vercel mới được gọi
-  const authHeader = req.headers.authorization;
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return res.status(401).json({ error: "Unauthorized" });
-  }
 
+router.get("/cron/reconciliation", async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`)
+    return res.status(401).json({ error: "Unauthorized" });
   try {
     const result = await ReconciliationService.runDailyReconciliation();
     return res.json({
@@ -89,25 +94,27 @@ router.get("/cron/reconciliation", async (req, res) => {
     return res.status(500).json({ error: error.message });
   }
 });
-router.post("/bookings/:ticketId/revoke", AdminController.revokeSingleTicket);
-router.post("/reconciliation/trigger", async (req, res) => {
+
+router.post(
+  "/bookings/:ticketId/revoke",
+  rateLimit(10, 60),
+  AdminController.revokeSingleTicket,
+);
+router.post("/reconciliation/trigger", rateLimit(3, 60), async (req, res) => {
   try {
     const report = await ReconciliationService.runDailyReconciliation();
     return res.status(200).json({
       success: true,
-      message: "Đã hoàn thành tiến trình kiểm tra đối soát tài chính.",
+      message: "Đã hoàn thành đối soát.",
       data: report,
     });
   } catch (error: any) {
-    return res.status(500).json({
-      success: false,
-      message: "Lỗi hệ thống khi thực hiện đối soát.",
-      error: error.message,
-    });
+    return res
+      .status(500)
+      .json({ success: false, message: "Lỗi đối soát.", error: error.message });
   }
 });
 
-// Gọi qua class thay vì import lẻ
 router.patch("/wallets/:userId/unlock", AdminController.unlockWallet);
 
 export default router;

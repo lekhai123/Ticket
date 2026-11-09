@@ -3,6 +3,7 @@ import { BookingController } from "../Controller/bookingController";
 import { authenticateToken } from "../Middleware/authMiddleware";
 import { validate } from "../Middleware/validateMiddleware";
 import { createBookingSchema } from "../Validation/bookingValidation";
+import { rateLimit } from "../Middleware/rateLimitMiddleware";
 
 const router = Router();
 
@@ -10,17 +11,21 @@ const router = Router();
 router.post(
   "/",
   authenticateToken,
+  rateLimit(10, 60), // 10 lần đặt vé / phút / IP
   validate(createBookingSchema),
   BookingController.createBooking,
 );
 
 // Hủy vé
-router.delete("/:id", authenticateToken, BookingController.cancelBooking);
+router.delete(
+  "/:id",
+  authenticateToken,
+  rateLimit(10, 60),
+  BookingController.cancelBooking,
+);
 
-// Xem vé của chính mình
+// Xem vé
 router.get("/my-tickets", authenticateToken, BookingController.getUserTickets);
-
-// Admin xem vé của user khác
 router.get(
   "/user/:userId",
   authenticateToken,
