@@ -1,5 +1,15 @@
 {
   "version": 2,
+  "crons": [
+    {
+      "path": "/api/admin/cron/ticket-auditor",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/admin/cron/reconciliation",
+      "schedule": "0 3 * * *"
+    }
+  ],
   "daemons": {
     "bullmq-worker": {
       "root": ".",

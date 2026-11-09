@@ -14,6 +14,7 @@ import adminRoutes from "./Router/adminRoutes";
 import authRoutes from "./Router/authRoutes";
 import bookingRoutes from "./Router/bookingRoutes";
 import paymentRoutes from "./Router/paymentRoutes";
+import { initTicketAuditorCron } from "./jobs/ticketAuditorJob";
 
 const app = express();
 
