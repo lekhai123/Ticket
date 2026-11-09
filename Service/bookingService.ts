@@ -1,4 +1,5 @@
 import prisma from "../database/prismaClient";
+import { sendNotificationEmail } from "../queues/mailQueue";
 import { RedisLock } from "../Utils/redisLock";
 import { MultiLevelCache } from "./cacheService";
 
@@ -93,6 +94,16 @@ export class BookingService {
               paidAmount: paymentMethod === "WALLET" ? tripPrice : 0,
             },
           });
+          const user = await prisma.users.findUnique({
+            where: { id: userId },
+          });
+          if (user) {
+            await sendNotificationEmail({
+              email: user.email,
+              type: "BOOKING_SUCCESS",
+              data: { route: trip.route, seat: seatNumber },
+            });
+          }
 
           if (paymentMethod === "WALLET") {
             await tx.auditLog.create({

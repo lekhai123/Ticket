@@ -11,6 +11,7 @@ import { MultiLevelCache } from "./cacheService";
 
 export class AdminService {
   static async getSystemStats() {
+    //  Các số liệu Real-time (Đếm trực tiếp, tốc độ cực nhanh)
     const totalUsers = await prisma.users.count({
       where: { role: "CUSTOMER" },
     });
@@ -18,37 +19,41 @@ export class AdminService {
     const totalTicketsSold = await prisma.tickets.count({
       where: { status: "CONFIRMED" },
     });
-
-    const confirmedTickets = await prisma.tickets.findMany({
-      where: { status: "CONFIRMED" },
-      select: {
-        createdAt: true,
-        trip: { select: { price: true, route: true } },
-      },
-    });
-
-    const totalRevenue = confirmedTickets.reduce((sum, ticket) => {
-      return sum + Number(ticket.trip?.price || 0);
-    }, 0);
-
     const walletBalanceSum = await prisma.wallets.aggregate({
       _sum: { balance: true },
     });
 
-    const routeMap: Record<string, number> = {};
-    confirmedTickets.forEach((ticket) => {
-      const routeName = ticket.trip?.route || "Không xác định";
-      routeMap[routeName] = (routeMap[routeName] || 0) + 1;
-    });
+    // Tổng doanh thu lấy từ View (Cộng tất cả các ngày)
+    const totalRevResult: any[] = await prisma.$queryRaw`
+      SELECT SUM(total_revenue) as total FROM revenue_stats
+    `;
+    const totalRevenue = Number(totalRevResult[0]?.total || 0);
 
-    const topRoutes = Object.entries(routeMap)
-      .map(([name, tickets]) => ({ name, tickets }))
-      .sort((a, b) => b.tickets - a.tickets)
-      .slice(0, 5);
+    // Top Tuyến đường (Vẫn dùng SQL GROUP BY vì nó nhẹ)
+    const topRoutes: any[] = await prisma.$queryRaw`
+      SELECT tr.route as name, COUNT(t.id) as tickets
+      FROM "Tickets" t
+      JOIN "Trips" tr ON t."tripId" = tr.id
+      WHERE t.status = 'CONFIRMED'
+      GROUP BY tr.route
+      ORDER BY tickets DESC
+      LIMIT 5
+    `;
+    const formattedTopRoutes = topRoutes.map((r) => ({
+      name: r.name,
+      tickets: Number(r.tickets),
+    }));
 
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    // Biểu đồ doanh thu 7 ngày (Đọc từ View - Cực nhẹ)
+    const chartData: any[] = await prisma.$queryRaw`
+      SELECT 
+        TO_CHAR(date, 'DD/MM') as date,
+        total_revenue as amount
+      FROM revenue_stats
+      WHERE date >= CURRENT_DATE - INTERVAL '7 days'
+    `;
 
+    // Map để đảm bảo đủ 7 ngày (ngày nào không có thì gán 0)
     const revenueChartMap = new Map<string, number>();
     for (let i = 6; i >= 0; i--) {
       const d = new Date();
@@ -60,24 +65,17 @@ export class AdminService {
       revenueChartMap.set(dateStr, 0);
     }
 
-    confirmedTickets.forEach((ticket) => {
-      if (ticket.createdAt >= sevenDaysAgo) {
-        const dateStr = new Date(ticket.createdAt).toLocaleDateString("vi-VN", {
-          day: "2-digit",
-          month: "2-digit",
-        });
-        if (revenueChartMap.has(dateStr)) {
-          const current = revenueChartMap.get(dateStr) || 0;
-          revenueChartMap.set(
-            dateStr,
-            current + Number(ticket.trip?.price || 0),
-          );
-        }
+    chartData.forEach((row) => {
+      if (revenueChartMap.has(row.date)) {
+        revenueChartMap.set(row.date, Number(row.amount));
       }
     });
 
     const revenueChart = Array.from(revenueChartMap.entries()).map(
-      ([date, amount]) => ({ date, amount }),
+      ([date, amount]) => ({
+        date,
+        amount,
+      }),
     );
 
     return {
@@ -86,7 +84,7 @@ export class AdminService {
       totalTrips,
       totalTicketsSold,
       totalSystemWalletBalance: Number(walletBalanceSum._sum.balance || 0),
-      topRoutes,
+      topRoutes: formattedTopRoutes,
       revenueChart,
     };
   }

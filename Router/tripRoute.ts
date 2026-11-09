@@ -15,6 +15,8 @@ import {
 const router = Router();
 
 // 1. API CÔNG KHAI
+router.get("/system-status", AdminController.getPublicHealth);
+
 router.get(
   "/",
   cacheResponse(60),
@@ -59,6 +61,4 @@ router.delete(
 
 // 3. API LẤY CHI TIẾT
 router.get("/:id", validate(getTripParamSchema), TripController.getTripById);
-router.get("/system-status", AdminController.getPublicHealth);
-
 export default router;

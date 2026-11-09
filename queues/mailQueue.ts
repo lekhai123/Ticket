@@ -3,23 +3,32 @@ import Redis from "ioredis";
 
 const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
 
-// Đảm bảo URL bắt đầu bằng rediss:// nếu dùng Upstash
-const isTls = redisUrl.startsWith("rediss://");
-
 const redisConnection = new Redis(redisUrl, {
-  maxRetriesPerRequest: null, // Bắt buộc cho BullMQ
-  enableReadyCheck: false, // Quan trọng với Upstash
-  keepAlive: 10000, // Giữ kết nối sống qua proxy
-  tls: isTls ? { rejectUnauthorized: false } : undefined, // Hỗ trợ TLS
+  maxRetriesPerRequest: null,
+  enableReadyCheck: false,
+  keepAlive: 10000,
+  tls: redisUrl.startsWith("rediss://")
+    ? { rejectUnauthorized: false }
+    : undefined,
 });
 
+//Khai báo 2 interface riêng biệt
 export interface MailJobData {
   email: string;
   code: string;
   type: "REGISTER" | "FORGOT_PASSWORD";
 }
 
-export const mailQueue = new Queue<MailJobData>("mail-queue", {
+export interface NotificationJobData {
+  email: string;
+  type: "BOOKING_SUCCESS" | "BOOKING_CANCEL" | "ADMIN_REVOKE" | "ADMIN_GIFT";
+  data?: any;
+}
+
+// Tạo Union Type để Queue chấp nhận cả 2 loại job
+export type AllJobData = MailJobData | NotificationJobData;
+
+export const mailQueue = new Queue<AllJobData>("mail-queue", {
   connection: redisConnection,
   defaultJobOptions: {
     attempts: 3,
@@ -28,3 +37,8 @@ export const mailQueue = new Queue<MailJobData>("mail-queue", {
     removeOnFail: 100,
   },
 });
+
+// Hàm helper để đẩy Job thông báo vào Queue
+export const sendNotificationEmail = async (payload: NotificationJobData) => {
+  await mailQueue.add("send-notification-job", payload);
+};
