@@ -57,7 +57,6 @@ export class BookingService {
           if (paymentMethod === "WALLET") {
             const wallet = await tx.wallets.findUnique({ where: { userId } });
 
-            // ĐÃ THÊM ĐOẠN CHẶN VÍ BỊ KHÓA TẠI ĐÂY
             if (!wallet || wallet.isLocked) {
               const error: any = new Error(
                 "Ví của bạn đang bị khóa do vi phạm hoặc chờ đối soát. Vui lòng liên hệ Admin!",
@@ -94,16 +93,6 @@ export class BookingService {
               paidAmount: paymentMethod === "WALLET" ? tripPrice : 0,
             },
           });
-          const user = await prisma.users.findUnique({
-            where: { id: userId },
-          });
-          if (user) {
-            await sendNotificationEmail({
-              email: user.email,
-              type: "BOOKING_SUCCESS",
-              data: { route: trip.route, seat: seatNumber },
-            });
-          }
 
           if (paymentMethod === "WALLET") {
             await tx.auditLog.create({
@@ -131,6 +120,19 @@ export class BookingService {
         },
         { timeout: 25000 },
       );
+      try {
+        const user = await prisma.users.findUnique({ where: { id: userId } });
+        const trip = await prisma.trips.findUnique({ where: { id: tripId } });
+        if (user && trip) {
+          await sendNotificationEmail({
+            email: user.email,
+            type: "BOOKING_SUCCESS",
+            data: { route: trip.route, seat: seatNumber },
+          });
+        }
+      } catch (mailErr) {
+        console.warn("[BOOKING] Lỗi gửi mail thông báo:", mailErr);
+      }
 
       try {
         await MultiLevelCache.invalidate(`trips:detail:${tripId}`);
@@ -146,15 +148,16 @@ export class BookingService {
   }
 
   /**
-   * ADMIN THU HỒI VÉ LẺ (Xử lý triệt để lỗi DB, bug, chuyển nhầm)
+   * ADMIN THU HỒI VÉ LẺ
    */
   static async adminRevokeTicket(
     ticketId: number,
+    adminUserId: number, //Nhận thêm ID của Admin thực hiện
     reason: string = "Admin thu hồi thủ công",
   ) {
     const ticket = await prisma.tickets.findUnique({
       where: { id: ticketId },
-      include: { trip: true },
+      include: { trip: true, user: true }, // Lấy thêm thông tin user để gửi mail
     });
 
     if (!ticket) throw new Error("Không tìm thấy vé!");
@@ -168,7 +171,6 @@ export class BookingService {
         data: { status: "REVOKED_BY_ADMIN" },
       });
 
-      // LOGIC HOÀN TIỀN THÔNG MINH: Chỉ hoàn nếu user thực sự bỏ tiền ra mua
       let refundAmount = 0;
       if (ticket.status === "CONFIRMED") {
         if (
@@ -220,6 +222,7 @@ export class BookingService {
             status: "REVOKED_BY_ADMIN",
             reason,
             refunded: refundAmount,
+            performedByAdminId: adminUserId, // lưu ID của người thao tác
           },
         },
       });
@@ -235,16 +238,29 @@ export class BookingService {
       console.warn("[BOOKING] Xóa cache thất bại:", cacheErr.message);
     }
 
+    // Gửi mail thông báo bị thu hồi
+    try {
+      if (ticket.user) {
+        await sendNotificationEmail({
+          email: ticket.user.email,
+          type: "ADMIN_REVOKE",
+          data: { route: ticket.trip.route, reason: reason },
+        });
+      }
+    } catch (mailErr) {
+      console.warn("[BOOKING] Lỗi gửi mail thu hồi:", mailErr);
+    }
+
     return result;
   }
 
   /**
-   * 2. KHÁCH HÀNG CHỦ ĐỘNG HỦY VÉ (có hoàn tiền nếu đã thanh toán)
+   * KHÁCH HÀNG CHỦ ĐỘNG HỦY VÉ
    */
   static async cancelTicket(userId: number, ticketId: number) {
     const ticket = await prisma.tickets.findUnique({
       where: { id: ticketId },
-      include: { trip: true },
+      include: { trip: true, user: true },
     });
 
     if (!ticket) {
@@ -311,6 +327,19 @@ export class BookingService {
       await MultiLevelCache.invalidate(`user:${userId}:tickets*`);
     } catch (cacheErr: any) {
       console.warn("[BOOKING] Xóa cache thất bại:", cacheErr.message);
+    }
+
+    // Gửi mail thông báo hủy vé thành công
+    try {
+      if (ticket.user) {
+        await sendNotificationEmail({
+          email: ticket.user.email,
+          type: "BOOKING_CANCEL",
+          data: { route: ticket.trip.route },
+        });
+      }
+    } catch (mailErr) {
+      console.warn("[BOOKING] Lỗi gửi mail hủy vé:", mailErr);
     }
 
     return result;

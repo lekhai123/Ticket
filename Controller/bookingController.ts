@@ -1,128 +1,190 @@
 import type { Request, Response, NextFunction } from "express";
-import { BookingService } from "../Service/bookingService";
+import { AdminService } from "../Service/adminService";
 import prisma from "../database/prismaClient";
+import { TicketService } from "../Service/ticketService";
+import { BookingService } from "../Service/bookingService";
 
 const catchAsync =
-  (fn: any) => (req: Request, res: Response, next: NextFunction) => {
+  (fn: (req: Request, res: Response, next: NextFunction) => Promise<any>) =>
+  (req: Request, res: Response, next: NextFunction) => {
     Promise.resolve(fn(req, res, next)).catch(next);
   };
 
-export class BookingController {
-  static createBooking = catchAsync(async (req: Request, res: Response) => {
-    const userId = (req as any).user?.id || (req as any).user?.userId;
-    if (!userId)
-      return res
-        .status(401)
-        .json({ success: false, message: "Chưa đăng nhập!" });
-
-    // Nhận cả mảng seatNumbers hoặc 1 seatNumber
-    const { tripId, seatNumber, seatNumbers, paymentMethod } = req.body;
-    const seatsToBook = seatNumbers || (seatNumber ? [seatNumber] : []);
-
-    if (!seatsToBook || seatsToBook.length === 0) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Vui lòng chọn ghế!" });
-    }
-
-    const results = [];
-    // Lặp qua từng ghế để đặt
-    for (const seat of seatsToBook) {
-      const ticket = await BookingService.holdOrBookSeat(
-        Number(userId),
-        Number(tripId),
-        Number(seat),
-        paymentMethod || "WALLET",
-      );
-      results.push(ticket);
-    }
-
-    return res.status(201).json({
-      success: true,
-      message: "Đặt vé thành công!",
-      data: results.length === 1 ? results[0] : results,
-    });
+export class AdminController {
+  static getStats = catchAsync(async (req: Request, res: Response) => {
+    const stats = await AdminService.getSystemStats();
+    res.status(200).json({ success: true, data: stats });
   });
 
-  static cancelBooking = catchAsync(async (req: Request, res: Response) => {
-    const userId = (req as any).user?.id || (req as any).user?.userId;
-    const ticketId = Number(req.params.id);
-    if (!userId)
-      return res
-        .status(401)
-        .json({ success: false, message: "Chưa đăng nhập!" });
+  static getTickets = catchAsync(async (req: Request, res: Response) => {
+    const page = req.query.page ? Number(req.query.page) : 1;
+    const limit = req.query.limit ? Number(req.query.limit) : 15;
+    const search = req.query.search ? String(req.query.search) : undefined;
 
-    const canceledTicket = await BookingService.cancelTicket(userId, ticketId);
-    return res.json({
-      success: true,
-      message: "Hủy vé thành công và đã hoàn tiền vào ví (nếu có)!",
-      data: canceledTicket,
-    });
+    const result = await TicketService.getAllTicketsForAdmin(
+      page,
+      limit,
+      search,
+    );
+    res
+      .status(200)
+      .json({ success: true, data: result.data, meta: result.meta });
   });
 
-  static adminRevokeBooking = catchAsync(
+  static getAIAlerts = catchAsync(async (req: Request, res: Response) => {
+    const alerts = await prisma.auditLog.findMany({
+      where: { action: "AI_ANOMALY_ALERT" },
+      orderBy: { createdAt: "desc" },
+      take: 5,
+    });
+    res.status(200).json({ success: true, data: alerts });
+  });
+
+  static scanTickets = catchAsync(async (req: Request, res: Response) => {
+    const result = await TicketService.scanAnomalies();
+    res.status(200).json({ success: true, data: result });
+  });
+
+  static revokeSingleTicket = catchAsync(
     async (req: Request, res: Response) => {
-      const ticketId = Number(req.params.id);
-      // Nhận lý do thu hồi từ Frontend gửi lên
+      const ticketId = Number(req.params.ticketId);
       const { reason } = req.body;
+      const adminUserId = (req as any).user?.id || (req as any).user?.userId;
 
-      const revokedTicket = await BookingService.adminRevokeTicket(
+      if (!ticketId) {
+        return res
+          .status(400)
+          .json({ success: false, message: "Mã vé không hợp lệ!" });
+      }
+
+      const result = await BookingService.adminRevokeTicket(
         ticketId,
-        reason || "Admin thu hồi vé do sự cố",
+        Number(adminUserId), //truyền Admin ID vào
+        reason || "Admin thu hồi vé lẻ",
       );
 
-      return res.json({
+      res.status(200).json({
         success: true,
         message: "Đã thu hồi vé thành công!",
-        data: revokedTicket,
+        data: result,
       });
     },
   );
-  static getUserTickets = catchAsync(async (req: Request, res: Response) => {
-    const userIdFromToken = (req as any).user?.id || (req as any).user?.userId;
-    const role = (req as any).user?.role;
 
-    let targetUserId = Number(userIdFromToken);
-    // Nếu là ADMIN và có truyền userId trên URL thì lấy ID đó
-    if (role === "ADMIN" && req.params.userId) {
-      targetUserId = Number(req.params.userId);
-    }
+  static getUsers = catchAsync(async (req: Request, res: Response) => {
+    const page = req.query.page ? Number(req.query.page) : 1;
+    const limit = req.query.limit ? Number(req.query.limit) : 10;
+    const search = req.query.search ? String(req.query.search) : undefined;
 
-    if (!targetUserId) {
+    const result = await AdminService.getAllUsers({
+      page,
+      limit,
+      ...(search && { search }),
+    });
+
+    res.status(200).json({ success: true, data: result });
+  });
+
+  static massGift = catchAsync(async (req: Request, res: Response) => {
+    const user = (req as any).user;
+    const adminUserId = user?.id || user?.userId;
+
+    const { amount, batchId, targetType, targetId, reason } = req.body;
+
+    const result = await AdminService.executeMassGift({
+      adminUserId: Number(adminUserId),
+      amount: Number(amount),
+      batchId,
+      targetType,
+      targetId,
+      reason,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: `Phát quà thành công cho ${result.totalUsersGifted} người dùng!`,
+      data: result,
+    });
+  });
+
+  static getAuditLogs = catchAsync(async (req: Request, res: Response) => {
+    const page = req.query.page ? Number(req.query.page) : 1;
+    const limit = req.query.limit ? Number(req.query.limit) : 15;
+    const batchId = req.query.batchId ? String(req.query.batchId) : undefined;
+    const action = req.query.action ? String(req.query.action) : undefined;
+    const userId = req.query.userId ? Number(req.query.userId) : undefined;
+
+    const result = await AdminService.getAuditLogs({
+      page,
+      limit,
+      ...(batchId && { batchId }),
+      ...(action && { action }),
+      ...(userId && { userId }),
+    });
+
+    res.status(200).json({ success: true, data: result });
+  });
+
+  static getHealth = catchAsync(async (req: Request, res: Response) => {
+    const healthData = await AdminService.getHealthStatus();
+    const isHealthy = healthData.database.status === "HEALTHY";
+
+    res.status(isHealthy ? 200 : 503).json({
+      success: isHealthy,
+      data: healthData,
+    });
+  });
+
+  static getPublicHealth = catchAsync(async (req: Request, res: Response) => {
+    const fullHealth = await AdminService.getHealthStatus();
+
+    const publicStatus = {
+      database: fullHealth.database.status === "HEALTHY",
+      redis: fullHealth.redis.primary.status === "HEALTHY",
+      cloudinary: fullHealth.cloudinary.primary.status === "HEALTHY",
+      ai: fullHealth.gemini.primaryKey.status === "HEALTHY",
+    };
+
+    res.status(200).json({ success: true, data: publicStatus });
+  });
+
+  static unlockWallet = catchAsync(async (req: Request, res: Response) => {
+    const { userId } = req.params;
+
+    if (!userId || isNaN(Number(userId))) {
       return res
         .status(400)
-        .json({ success: false, message: "Mã người dùng không hợp lệ!" });
+        .json({ success: false, message: "User ID không hợp lệ!" });
     }
 
-    // Lấy tham số phân trang từ URL
-    const page = req.query.page ? Number(req.query.page) : 1;
-    const limit = req.query.limit ? Number(req.query.limit) : 5; // Mặc định 5 vé/trang
-    const skip = (page - 1) * limit;
+    const numericUserId = Number(userId);
 
-    // Dùng $transaction để lấy data và tổng số lượng cùng lúc (nhanh hơn)
-    const [tickets, total] = await prisma.$transaction([
-      prisma.tickets.findMany({
-        where: { userId: targetUserId },
-        include: { trip: true },
-        orderBy: { createdAt: "desc" },
-        skip: skip,
-        take: limit,
-      }),
-      prisma.tickets.count({
-        where: { userId: targetUserId },
-      }),
-    ]);
+    await prisma.$transaction(async (tx) => {
+      await tx.wallets.update({
+        where: { userId: numericUserId },
+        data: { isLocked: false },
+      });
 
-    //Trả về thêm object `meta` để Frontend vẽ nút chuyển trang
+      await tx.auditLog.create({
+        data: {
+          requestId: `MANUAL-UNLOCK-${Date.now()}`,
+          userId: numericUserId,
+          action: "ADMIN_UNLOCK_WALLET",
+          resource: "Wallets",
+          resourceId: String(numericUserId),
+          oldData: { isLocked: true },
+          newData: {
+            isLocked: false,
+            note: "Admin đã kiểm tra log và xác nhận mở khóa ví thủ công",
+          },
+          ipAddress: req.ip || "127.0.0.1",
+        },
+      });
+    });
+
     return res.status(200).json({
       success: true,
-      data: tickets,
-      meta: {
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
-      },
+      message: `Đã mở khóa ví thành công cho User #${numericUserId}!`,
     });
   });
 }
