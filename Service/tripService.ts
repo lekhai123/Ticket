@@ -287,7 +287,6 @@ export class TripService {
     const safePrompt = typeof prompt === "string" ? prompt : "";
     const cleanPrompt = safePrompt.trim().toLowerCase();
 
-    // 1. Không nhập gì hoặc yêu cầu xem hết -> Trả về toàn bộ (hợp lý)
     if (
       !cleanPrompt ||
       cleanPrompt.includes("tất cả") ||
@@ -296,15 +295,92 @@ export class TripService {
       return await this.getAllTripsLogic();
     }
 
-    // 2. Tìm kiếm chính xác / gần đúng theo Text (ILIKE) trước
+    const now = new Date();
+
+    // 1. Xử lý từ khóa thời gian (Sáng, Chiều, Tối)
+    let timeConditionPrisma: any = { departureAt: { gt: now } };
+    let timeConditionSQL = "";
+
+    if (cleanPrompt.includes("tối")) {
+      const startEvening = new Date(now);
+      startEvening.setHours(18, 0, 0, 0);
+      const endEvening = new Date(now);
+      endEvening.setHours(23, 59, 59, 999);
+      const searchStart = now > startEvening ? now : startEvening;
+
+      timeConditionPrisma = {
+        departureAt: { gte: searchStart, lte: endEvening },
+      };
+      timeConditionSQL = `AND EXTRACT(HOUR FROM "departureAt") >= 18`;
+    } else if (cleanPrompt.includes("sáng")) {
+      const startMorning = new Date(now);
+      startMorning.setHours(0, 0, 0, 0);
+      const endMorning = new Date(now);
+      endMorning.setHours(11, 59, 59, 999);
+      const searchStart =
+        now > endMorning
+          ? new Date(now.setDate(now.getDate() + 1))
+          : now > startMorning
+            ? now
+            : startMorning;
+      searchStart.setHours(0, 0, 0, 0);
+
+      timeConditionPrisma = { departureAt: { gt: searchStart } };
+      timeConditionSQL = `AND EXTRACT(HOUR FROM "departureAt") < 12`;
+    } else if (cleanPrompt.includes("chiều")) {
+      const startAfternoon = new Date(now);
+      startAfternoon.setHours(12, 0, 0, 0);
+      const endAfternoon = new Date(now);
+      endAfternoon.setHours(17, 59, 59, 999);
+      const searchStart = now > startAfternoon ? now : startAfternoon;
+
+      timeConditionPrisma = {
+        departureAt: { gte: searchStart, lte: endAfternoon },
+      };
+      timeConditionSQL = `AND EXTRACT(HOUR FROM "departureAt") >= 12 AND EXTRACT(HOUR FROM "departureAt") < 18`;
+    }
+
+    // 2. Lọc bỏ các từ nhiễu để lấy địa danh/từ khóa chính
+    const stopWords = [
+      "xe",
+      "đi",
+      "vé",
+      "chuyến",
+      "tìm",
+      "muốn",
+      "cần",
+      "buổi",
+      "tối",
+      "sáng",
+      "chiều",
+      "ngày",
+      "mai",
+      "hôm",
+      "nay",
+      "từ",
+      "đến",
+      "về",
+      "có",
+      "không",
+    ];
+    const searchTerms = cleanPrompt
+      .split(/\s+/)
+      .filter((w) => !stopWords.includes(w) && w.length > 1);
+
+    // Nếu người dùng chỉ gõ "buổi tối" -> keywordSearch rỗng
+    const keywordSearch = searchTerms.length > 0 ? searchTerms.join(" ") : "";
+
+    // 3. Tìm kiếm Text (ILIKE) với từ khóa đã lọc (VD: "đà lạt")
+    const whereCondition: any = { ...timeConditionPrisma };
+    if (keywordSearch) {
+      whereCondition.OR = [
+        { route: { contains: keywordSearch, mode: "insensitive" } },
+        { description: { contains: keywordSearch, mode: "insensitive" } },
+      ];
+    }
+
     const keywordTrips = await prisma.trips.findMany({
-      where: {
-        departureAt: { gt: new Date() },
-        OR: [
-          { route: { contains: cleanPrompt, mode: "insensitive" } },
-          { description: { contains: cleanPrompt, mode: "insensitive" } },
-        ],
-      },
+      where: whereCondition,
       take: limit,
       orderBy: { departureAt: "asc" },
       include: {
@@ -319,24 +395,33 @@ export class TripService {
       return keywordTrips.map((trip) => this.formatTripWithSeats(trip));
     }
 
-    // 3. Nếu không khớp text -> Dùng Semantic Search (AI)
-    const queryVector = await this.getEmbedding(cleanPrompt);
+    // Nếu không có địa danh cụ thể (VD: user chỉ gõ "xe buổi tối"), trả về rỗng
+    if (!keywordSearch) return [];
+
+    // 4. Dùng Semantic Search (AI) nếu Text không tìm thấy
+    // Dùng keywordSearch (đã lọc) thay vì cleanPrompt (câu gốc) để AI chấm điểm chính xác hơn
+    const queryVector = await this.getEmbedding(keywordSearch);
     const vectorString = `[${queryVector.join(",")}]`;
 
-    // SỬA: Tăng ngưỡng lên 0.85 để AI cực kỳ khắt khe, tránh trả về rác
-    const SIMILARITY_THRESHOLD = 0.85;
+    // Hạ ngưỡng xuống 0.60 để bao quát hơn
+    const SIMILARITY_THRESHOLD = 0.6;
 
-    const trips: any[] = await prisma.$queryRaw`
+    const trips: any[] = await prisma.$queryRawUnsafe(
+      `
       SELECT id, route, "departureAt", price, "totalSeats", description,
-             1 - (embedding <=> ${vectorString}::vector) AS similarity
+             1 - (embedding <=> $1::vector) AS similarity
       FROM "Trips"
       WHERE "departureAt" > NOW()
-        AND 1 - (embedding <=> ${vectorString}::vector) > ${SIMILARITY_THRESHOLD}
+        ${timeConditionSQL}
+        AND 1 - (embedding <=> $1::vector) > $2
       ORDER BY similarity DESC
-      LIMIT ${limit};
-    `;
+      LIMIT $3
+    `,
+      vectorString,
+      SIMILARITY_THRESHOLD,
+      limit,
+    );
 
-    // SỬA: Nếu AI không tìm thấy thì trả về mảng rỗng [], không hiển thị bừa
     if (!trips || trips.length === 0) {
       return [];
     }
