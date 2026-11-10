@@ -404,7 +404,7 @@ export class TripService {
     const vectorString = `[${queryVector.join(",")}]`;
 
     // Hạ ngưỡng xuống 0.60 để bao quát hơn
-    const SIMILARITY_THRESHOLD = 0.6;
+    const SIMILARITY_THRESHOLD = 0.72;
 
     const trips: any[] = await prisma.$queryRawUnsafe(
       `
