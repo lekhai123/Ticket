@@ -16,12 +16,26 @@ import {
   WalletCards,
   Activity,
   Loader2,
+  AlertTriangle,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { useAdminDashboard } from "../../hooks/useAdminStats";
+import { adminApi } from "../../api/admin.api";
 import { formatCurrency } from "../../utils/format";
+import { Link } from "react-router-dom";
 
 export default function Dashboard() {
   const { data: rawStats, isLoading } = useAdminDashboard();
+
+  const { data: alertRes } = useQuery({
+    queryKey: ["system-alerts"],
+    queryFn: () => adminApi.getSystemAlerts(),
+    refetchInterval: 60000,
+  });
+
+  const alerts = alertRes?.data;
+  const hasFinancialIssue = alerts?.lockedWalletsCount > 0;
+  const hasTicketIssue = !!alerts?.ticketAlert;
 
   if (isLoading) {
     return (
@@ -41,6 +55,43 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
+      {(hasFinancialIssue || hasTicketIssue) && (
+        <div className="bg-rose-500/10 border border-rose-500/20 rounded-2xl p-4 flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-rose-500/20 rounded-full text-rose-400 animate-pulse">
+              <AlertTriangle className="h-6 w-6" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-rose-400">
+                CẢNH BÁO HỆ THỐNG!
+              </h3>
+              <p className="text-sm text-rose-300/80">
+                Phát hiện bất thường về tài chính hoặc vé. Vui lòng kiểm tra
+                ngay.
+              </p>
+            </div>
+          </div>
+          <div className="flex gap-3 w-full md:w-auto">
+            {hasFinancialIssue && (
+              <Link
+                to="/admin/reconciliation"
+                className="flex-1 md:flex-none text-center bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 px-4 py-2 rounded-xl text-sm font-medium transition"
+              >
+                Xem {alerts.lockedWalletsCount} ví bị khóa
+              </Link>
+            )}
+            {hasTicketIssue && (
+              <Link
+                to="/admin/tickets"
+                className="flex-1 md:flex-none text-center bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 px-4 py-2 rounded-xl text-sm font-medium transition"
+              >
+                Xem vé lỗi
+              </Link>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-[#F5F5F7]">
@@ -55,7 +106,6 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           title="Tổng Doanh Thu"
@@ -74,12 +124,11 @@ export default function Dashboard() {
         />
         <StatCard
           title="Tổng Tiền Trong Ví"
-          value={formatCurrency(stats?.totalSystemWalletBalance ?? 0)}
+          value={formatCurrency(stats?.totalSystemWalletBalance || 0)}
           icon={WalletCards}
         />
       </div>
 
-      {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-7 gap-6">
         <div className="lg:col-span-4 rounded-2xl border border-white/[0.08] bg-[#15151B] p-6">
           <h3 className="text-base font-semibold text-[#F5F5F7] mb-6">

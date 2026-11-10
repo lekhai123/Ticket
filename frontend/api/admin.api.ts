@@ -15,9 +15,9 @@ export const adminApi = {
   runReconciliation: async (): Promise<ApiResponse<any>> => {
     const res = await axiosClient.post<ApiResponse<any>>(
       "/admin/reconciliation/trigger",
-      {}, // Tham số body (để trống)
+      {},
       {
-        timeout: 60000, // ✅ Cho phép chờ tối đa 60 giây
+        timeout: 60000,
       },
     );
     return res.data;
@@ -66,15 +66,20 @@ export const adminApi = {
     return res.data;
   },
 
-  // THÊM HÀM NÀY ĐỂ LẤY CẢNH BÁO AI
   getAIAlerts: async (): Promise<any> => {
     const res = await axiosClient.get<any>("/admin/ai-alerts");
     return res.data;
   },
+
   revokeAnomalies: async (reason: string): Promise<any> => {
     const res = await axiosClient.post<any>("/admin/tickets/revoke-anomalies", {
       reason,
     });
+    return res.data;
+  },
+
+  getSystemAlerts: async (): Promise<any> => {
+    const res = await axiosClient.get<any>("/admin/system-alerts");
     return res.data;
   },
 };

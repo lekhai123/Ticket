@@ -6,15 +6,27 @@ import {
   ShieldAlert,
   User,
   Bot,
+  AlertTriangle,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { useAuditLogs } from "../../hooks/useAudit";
 import { Input } from "../../components/ui/Input";
+import { adminApi } from "../../api/admin.api";
 import { formatDate } from "../../utils/format";
 
 export default function AuditLog() {
   const [search, setSearch] = useState("");
   const { data: rawData, isLoading } = useAuditLogs({ search });
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
+
+  const { data: alertRes } = useQuery({
+    queryKey: ["system-alerts"],
+    queryFn: () => adminApi.getSystemAlerts(),
+    refetchInterval: 60000,
+  });
+
+  const alerts = alertRes?.data;
+  const hasIssue = alerts?.lockedWalletsCount > 0 || !!alerts?.ticketAlert;
 
   const logsList =
     rawData?.logs ||
@@ -31,6 +43,19 @@ export default function AuditLog() {
           Truy vết mọi biến động dữ liệu và tài chính.
         </p>
       </div>
+
+      {hasIssue && (
+        <div className="p-4 bg-rose-500/10 border border-rose-500/20 rounded-xl flex items-center gap-3 text-rose-400">
+          <AlertTriangle className="h-5 w-5 animate-pulse flex-shrink-0" />
+          <div className="text-sm">
+            <span className="font-bold">Cảnh báo: </span>
+            Hệ thống ghi nhận có {alerts?.lockedWalletsCount || 0} ví đang bị
+            khóa do bất thường tài chính.
+            {(alerts?.ticketAlert || alerts?.financialAlert) &&
+              " AI đã phân tích nguyên nhân và ghi log bên dưới."}
+          </div>
+        </div>
+      )}
 
       <div className="flex gap-4">
         <Input
