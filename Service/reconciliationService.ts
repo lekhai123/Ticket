@@ -1,6 +1,7 @@
 import prisma from "../database/prismaClient";
 import { AIReconciliationAnalyzer } from "./aiReconciliationAnalyzer.service";
 import { sendNotificationEmail } from "../queues/mailQueue";
+import { AuditSigner } from "../Utils/auditSigner"; // ✅ Thêm import
 
 export interface MismatchDetail {
   userId: number;
@@ -87,6 +88,27 @@ export class ReconciliationService {
           for (const log of auditLogs) {
             const newData = log.newData as Record<string, any> | null;
             if (!newData || typeof newData.amount !== "number") continue;
+
+            // KIỂM TRA CHỮ KÝ SỐ (CHỐNG HACKER SỬA LOG)
+            const isValidSignature = AuditSigner.verifySignature(
+              {
+                requestId: log.requestId,
+                userId: log.userId,
+                action: log.action,
+                resource: log.resource,
+                resourceId: log.resourceId,
+                newData: log.newData,
+                oldData: log.oldData,
+              },
+              log.signature || "",
+            );
+
+            if (!isValidSignature) {
+              console.error(
+                `[SECURITY ALERT] Phát hiện AuditLog ID ${log.id} của User ${wallet.userId} bị can thiệp trái phép! Bỏ qua log này.`,
+              );
+              continue; // Bỏ qua log bị làm giả, không tính vào số dư lý thuyết
+            }
 
             const rawAmount = newData.amount;
             const action = log.action.toUpperCase();

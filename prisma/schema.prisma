@@ -134,6 +134,7 @@ model AuditLog {
   newData       Json?
   isRevoked     Boolean  @default(false)
   ipAddress     String?
+  signature     String?
   createdAt     DateTime @default(now())
   user          Users?   @relation(fields: [userId], references: [id])
 
