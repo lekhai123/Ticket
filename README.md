@@ -1,10 +1,11 @@
-# NexusTicket – Hệ Thống Đặt Vé Phân Tán (High Availability, Passwordless Auth & AI Semantic Search)
+# NexusTicket – Hệ Thống Đặt Vé Phân Tán (High Availability, AIOps & Passwordless Auth)
 
-NexusTicket là hệ thống đặt vé xe trực tuyến toàn diện, được thiết kế theo mô hình **Modular Monolith** kết hợp Web App hiện đại. Dự án hướng tới mục tiêu trở thành một **Sản phẩm Nghiên cứu (SPNC)** với kiến trúc bảo mật tiên tiến, khả năng chịu tải cao và tích hợp AI sâu vào vận hành.
+NexusTicket là hệ thống đặt vé xe trực tuyến toàn diện, được thiết kế theo mô hình **Modular Monolith**. Dự án hướng tới mục tiêu trở thành một **Sản phẩm Nghiên cứu (SPNC)** với kiến trúc bảo mật đa lớp, khả năng chịu tải cao, và tích hợp Trí tuệ Nhân tạo (AI) sâu vào khâu vận hành (AIOps).
 
 - **Backend:** Node.js, Express, TypeScript, Prisma ORM, PostgreSQL.
-- **Hạ tầng & Tiện ích:** Dual Redis Cluster (HA), Multi-Level Cache, BullMQ Queue, PayOS Payment Gateway, Cloudinary.
-- **Bảo mật:** Passkeys (WebAuthn), JWT Rotation & Revocation, Application-Level Encryption (ALE).
+- **Frontend:** React, Vite, TailwindCSS, React Query.
+- **Hạ tầng & Tiện ích:** Vercel (API & Daemons), Docker, Dual Redis Cluster (HA), Multi-Level Cache, BullMQ, PayOS Payment Gateway, Cloudinary.
+- **Bảo mật:** Passkeys (WebAuthn), JWT Rotation & Revocation, HMAC Audit Logs, Rate Limiting.
 - **Kiểm thử:** Jest + Supertest (Integration & Unit Tests).
 
 ---
@@ -34,14 +35,14 @@ Hệ thống được tổ chức theo luồng: **Client → API Gateway → Dom
    ┌─────────┼──────────┬──────────┬──────────┬─────────┐
    ▼         ▼          ▼          ▼          ▼         ▼
 [Auth]    [Trips]   [Booking]   [Payments] [Wallets]  [Admin]
-(Pipeline Middleware: Auth JWT, Idempotency, IP Guard, Zod Validator)
+(Pipeline Middleware: Auth JWT, Idempotency, IP Guard, Zod Validator, Rate Limit)
              │
              ▼
 ════════════════════════ DOMAIN SERVICES ═══════════════════════
    ├── AuthService (Passkeys + JWT Rotation + Revocation)
    ├── OtpService (BullMQ / Resend Worker)
-   ├── TripService (Multi-Level Cache L1 RAM + L2 Redis)
-   ├── BookingService (Redis Distributed Lock + DB Advisory Lock)
+   ├── TripService (Hybrid Search: Text + Gemini Vector)
+   ├── BookingService (Bulk Booking + Redis Lock + DB Lock)
    ├── PaymentService (PayOS Integration & Webhook HMAC Verify)
    ├── WalletService (Debt/Balance Guard & isLocked Check)
    ├── AI Proxy Service (Gemini Multi-Key Failover)
@@ -50,99 +51,88 @@ Hệ thống được tổ chức theo luồng: **Client → API Gateway → Dom
              │
              ▼
 ══════════════════════ OPERATIONS & STATE ══════════════════════
- ├── PostgreSQL (Prisma ORM) – Dữ liệu chính
+ ├── PostgreSQL (Prisma ORM) – Dữ liệu chính (pgvector)
  ├── Dual Redis Cluster (Primary & Backup Failover)
- ├── BullMQ Mail Queue (Xử lý bất đồng bộ)
+ ├── Vercel Daemons (BullMQ Mail Worker chạy nền độc lập)
  ├── PayOS Payment Gateway (Production)
  ├── Cloudinary Storage (Dual Cloud Fallback)
- └── Gemini Vector Engine (Tìm kiếm ngữ nghĩa & Quét bất thường)
+ └── Gemini Vector Engine (Tìm kiếm ngữ nghĩa & AIOps)
 ```
 
 ---
 
-## 🔐 2. Tính Năng Bảo Mật & Kiểm Soát Tài Chính
+## 🔐 2. Tính Năng Bảo Mật & Kiểm Soát Tài Chính (Zero-Trust)
 
-Hệ thống được xây dựng với triết lý **Zero-Trust** và bảo vệ dữ liệu đa lớp.
+### 2.1. Xác Thực Không Mật Khẩu (Passkeys / WebAuthn)
 
-### 2.1. Xác Thực Không Mật Khẩu (Passwordless) với Passkeys / WebAuthn
-
-- Người dùng có thể đăng nhập bằng **Vân tay, Face ID hoặc Windows Hello** thay vì mật khẩu truyền thống.
-- Loại bỏ hoàn toàn rủi ro **Phishing** và **Credential Stuffing** vì khóa riêng tư không bao giờ rời khỏi thiết bị.
-- Đã tối ưu hóa tương thích: Thêm `userDisplayName` để hoạt động mượt mà trên Safari và Brave (khắc phục lỗi nhận diện trên Chrome iOS).
+- Hỗ trợ đăng nhập bằng Vân tay, Face ID hoặc Windows Hello. Loại bỏ hoàn toàn rủi ro Phishing vì khóa riêng tư không rời khỏi thiết bị.
 
 ### 2.2. JWT Hiện Đại với Refresh Token Rotation & Revocation
 
-- **Access Token** (15 phút) lưu trong RAM (Zustand), **Refresh Token** (7 ngày) lưu trong **HttpOnly Cookie** (chống XSS).
-- **Refresh Token Rotation:** Mỗi lần refresh, token cũ bị thu hồi và cấp cặp token mới.
-- **Revocation List (Redis):** Khi logout, cả Access và Refresh Token bị đưa vào blacklist trên Redis để vô hiệu hóa ngay lập tức.
+- **Access Token** (15 phút) lưu trong RAM, **Refresh Token** (7 ngày) lưu trong **HttpOnly Cookie** (chống XSS).
+- **Revocation List (Redis):** Khi logout, token lập tức bị vô hiệu hóa trên Redis.
 
-### 2.3. Application-Level Encryption (ALE)
+### 2.3. Bảo Vệ Dòng Tiền & Khóa Ví Tự Động (AIOps)
 
-- Các trường PII như **Số điện thoại** được mã hóa bằng **AES-256-GCM** trước khi ghi vào PostgreSQL.
-- Ngay cả khi Database bị rò rỉ, kẻ tấn công cũng không thể đọc được dữ liệu gốc.
+- **Khóa ví tự động:** Module Đối soát (Cron) tự động quét DB, nếu phát hiện số dư lệch so với Lịch sử (AuditLog) sẽ lập tức gán cờ `isLocked = true` và ghi log cảnh báo.
+- **Chặn giao dịch:** Mọi API Mua vé và Nạp tiền đều bắt buộc kiểm tra `isLocked`. Nếu ví bị khóa, trả về lỗi `403 Forbidden`.
 
-### 2.4. Bảo Vệ Dòng Tiền & Khóa Ví Tự Động (Financial Guardrails)
+### 2.4. Toàn Vẹn Dữ Liệu (HMAC Audit Logs)
 
-- **Khóa ví tự động (AIOps):** Khi module Đối soát phát hiện số dư ví bị âm hoặc sai lệch so với Audit Log, hệ thống sẽ tự động gán cờ `isLocked = true` và ghi log.
-- **Chặn giao dịch:** Mọi API liên quan đến Mua vé (`BookingService`) và Nạp tiền (`WalletService`) đều bắt buộc kiểm tra `isLocked`. Nếu ví bị khóa, hệ thống trả về lỗi `403 Forbidden`.
-- **Quyền hạn chặt chẽ:** Hệ thống không cho phép Admin tự khóa ví (chỉ AI được phép). Admin chỉ có quyền **Mở khóa ví** (Unlock) thủ công sau khi đã xác minh.
+- Bảng `AuditLog` được bảo vệ bằng **chữ ký số HMAC-SHA256**. Nếu có bất kỳ ai (kể cả Admin) can thiệp sửa đổi số tiền trong DB, chữ ký sẽ không còn khớp, hệ thống AIOps sẽ phát hiện và đưa ra cảnh báo đỏ.
 
 ---
 
-## ⚡ 3. Tính Năng Kỹ Thuật Cốt Lõi
+## ⚡ 3. Các Tính Năng Kỹ Thuật Cốt Lõi
 
-### 3.1. High Availability với Dual Redis & Auto-Failover
-
-- Thiết lập song song cụm **Redis Primary** và **Redis Backup**. Nếu Primary gặp sự cố, hệ thống tự động chuyển sang Backup.
-
-### 3.2. Multi-Level Cache (L1 RAM + L2 Dual Redis)
-
-- Kết hợp **LRU Cache** trên RAM và **Redis** phân tán, giảm độ trễ truy vấn danh mục chuyến xe xuống mức tức thì.
-
-### 3.3. Redis Distributed Lock + DB Advisory Lock (Chống Race Condition)
-
-- Sử dụng **Redis Lock** kết hợp **Postgres Advisory Lock** trong `prisma.$transaction` để đảm bảo an toàn tuyệt đối khi nhiều người dùng cùng đặt một ghế tại cùng một thời điểm.
-
-### 3.4. AI Quản Lý Vé & Tự Động Phát Hiện Bất Thường (Anomaly Detection)
-
-- **Quản lý Vé (Admin):** Giao diện phân trang, tìm kiếm thông minh và hỗ trợ thu hồi vé lẻ (hoàn tiền chính xác).
-- **Quét AI tự động:** Hệ thống tự động quét các vé có dấu hiệu bất thường (VD: vé 0đ, thanh toán thiếu) so với giá gốc của chuyến xe. Các vé lỗi được highlight màu đỏ để Admin xử lý.
-- **Cảnh báo tự động:** AI sẽ tự động phân tích nguyên nhân và gắn cảnh báo lên đầu trang Quản lý vé, giúp Admin không bỏ lỡ các giao dịch rủi ro.
+- **High Availability:** Dual Redis Cluster tự động chuyển vùng (Failover) khi Primary gặp sự cố.
+- **Multi-Level Cache:** Kết hợp LRU Cache (L1 - RAM) và Redis (L2) giúp truy vấn danh mục chuyến xe với độ trễ cực thấp.
+- **Chống Race Condition:** Sử dụng **Redis Distributed Lock** kết hợp **Postgres Advisory Lock** trong `prisma.$transaction` đảm bảo không xảy ra tình trạng overselling (bán trùng ghế).
+- **Tìm kiếm AI (Hybrid Search):** Kết hợp tìm kiếm từ khóa (ILIKE) và tìm kiếm ngữ nghĩa (Gemini Vector) với cơ chế Fallback thông minh (tự động bỏ lọc thời gian nếu không có kết quả).
 
 ---
 
 ## 🧪 4. Kiểm Thử Tự Động (Automated Testing)
 
-Dự án sử dụng **Jest** kết hợp **Supertest** để chạy các bài kiểm thử tích hợp và đơn vị.
+Dự án áp dụng chiến lược kiểm thử nghiêm ngặt với **Jest** và **Supertest**. Các bài test được viết để chạy trên **DB thật** (thông qua `dbTestHelper` tự động dọn dẹp rác), đảm bảo tính xác thực cao nhất. Các module gọi API bên thứ 3 (như AI, Mail Queue) đều được **Mock** để tránh phát sinh chi phí.
 
 ### 4.1. Cấu trúc bộ Test
 
-| Tên File                | Loại Test            | Mô tả                                                                                               |
-| ----------------------- | -------------------- | --------------------------------------------------------------------------------------------------- |
-| `tests/auth.test.ts`    | API Integration Test | Kiểm tra API đăng nhập trả về đúng mã lỗi (400) và cấp phát Cookie JWT khi thành công.              |
-| `tests/booking.test.ts` | Integration Test     | Mô phỏng 2 request đồng thời tranh chấp 1 ghế, xác nhận chỉ 1 request thành công (Redis + DB Lock). |
-| `tests/payos.test.ts`   | Unit Test            | Kiểm tra hàm xác thực chữ ký HMAC-SHA256 của PayOS, đảm bảo chống giả mạo webhook.                  |
+| Tên File                       | Loại Test        | Mô tả                                                                     |
+| :----------------------------- | :--------------- | :------------------------------------------------------------------------ |
+| `tests/auth.test.ts`           | Integration Test | Kiểm tra API đăng nhập, cấp phát JWT và xử lý sai mật khẩu.               |
+| `tests/booking.test.ts`        | Integration Test | Mô phỏng tranh chấp 1 ghế, xác nhận Lock hoạt động (1 thành công, 1 lỗi). |
+| `tests/bulkBooking.test.ts`    | Integration Test | Kiểm thử đặt nhiều ghế 1 lúc, trừ tiền chính xác.                         |
+| `tests/wallet.test.ts`         | Integration Test | Kiểm tra nạp tiền, chặn nạp tiền khi ví bị khóa.                          |
+| `tests/reconciliation.test.ts` | Integration Test | Giả lập Hacker sửa DB, kì vọng AIOps phát hiện và khóa ví.                |
+| `tests/auditSigner.test.ts`    | Unit Test        | Kiểm tra tính toàn vẹn của chữ ký số HMAC-SHA256.                         |
+| `tests/payos.test.ts`          | Unit Test        | Kiểm tra xác thực chữ ký Webhook PayOS.                                   |
 
 ### 4.2. Cách chạy Test
 
 ```bash
-npm install
+# Chạy toàn bộ test (Ép chạy tuần tự để tránh xung đột DB)
 npm run test
+
+# Chạy và xem báo cáo độ phủ (Coverage)
+npm run test:coverage
 ```
 
-### 4.3. Báo Cáo Độ Phủ Kiểm Thử (Test Coverage)
+### 4.3. Báo Cáo Độ Phủ (Test Coverage)
 
-Hệ thống đã được kiểm thử tự động với kết quả **100% Pass (5/5 tests)**.
+Hệ thống đạt kết quả **100% Pass (10/10 tests)**. Dưới đây là bảng tổng kết độ phủ các phân hệ quan trọng:
 
-| Tên Module                    | Statements (Câu lệnh) | Branches (Nhánh) | Functions (Hàm) | Lines (Dòng) |
-| :---------------------------- | :-------------------: | :--------------: | :-------------: | :----------: |
-| **Utils/payos.ts**            |        96.96%         |      28.57%      |      100%       |    96.96%    |
-| **Service/bookingService.ts** |        80.39%         |       70%        |     58.33%      |    80.39%    |
-| **Service/authService.ts**    |        65.71%         |       50%        |       80%       |    69.69%    |
-| **Utils/redisLock.ts**        |        64.28%         |        0%        |       0%        |    64.28%    |
-| **Tổng quan dự án**           |      **30.66%**       |    **12.56%**    |   **17.45%**    |  **31.18%**  |
+| Phân Hệ (Module)               | % Statements | % Branches | % Functions |  % Lines   |
+| :----------------------------- | :----------: | :--------: | :---------: | :--------: |
+| **app.ts** (Cấu hình Express)  |    96.96%    |   28.57%   |    100%     |   96.96%   |
+| **Validation/** (Schema Zod)   |    83.78%    |     0%     |     0%      |   83.78%   |
+| **Router/** (Tuyến API)        |    80.12%    |     0%     |     0%      |   80.12%   |
+| **Utils/** (Bảo mật, Lock)     |    66.91%    |   51.56%   |   68.96%    |   69.76%   |
+| **Middleware/** (Phân quyền)   |    61.11%    |   37.34%   |   59.09%    |   59.73%   |
+| **Service/** (Logic nghiệp vụ) |    23.44%    |   16.77%   |   16.26%    |   23.95%   |
+| **Tổng quan dự án**            |  **37.64%**  | **20.19%** | **26.13%**  | **38.09%** |
 
-_(Ghi chú: Độ phủ tổng quan 30.66% là do hệ thống có rất nhiều file UI, Service phụ trợ và Job chưa được đưa vào diện test trong đồ án này. Các module cốt lõi về Bảo mật và Giao dịch đều đạt độ phủ >80%)._
+_(Ghi chú: Độ phủ tổng quan 37.64% do kiến trúc dự án bao gồm nhiều module phụ trợ (AI Proxy, Cloudinary, Webhook). Các module cốt lõi về Bảo mật, Routing và Đặt vé đều đạt độ phủ rất cao >80%)._
 
 ---
 
@@ -153,97 +143,85 @@ _(Ghi chú: Độ phủ tổng quan 30.66% là do hệ thống có rất nhiều
 ├── api/                          # Serverless entrypoint cho Vercel
 ├── config/                       # Cấu hình Cloudinary, Env, JWT, Resend
 ├── Controller/                   # Điều phối Request & Response
-│   ├── adminController.ts
-│   ├── authController.ts
-│   ├── bookingController.ts
-│   ├── paymentController.ts      # Xử lý thanh toán PayOS
-│   ├── ticketController.ts       # Quản lý vé & AI Scan
-│   └── webauthnController.ts     # Xử lý Passkeys
 ├── database/                     # Khởi tạo Prisma Client singleton
 ├── frontend/                     # Giao diện người dùng (React + Vite)
-├── jobs/                         # Tiến trình chạy ngầm
-│   ├── reconciliationJob.ts      # Cron đối soát tài chính
-│   └── ticketAuditorJob.ts       # Cron quét vé bất thường
-├── Middleware/                   # Pipeline bảo mật
+├── jobs/                         # Tiến trình chạy ngầm (Cron đối soát, quét vé)
+├── Middleware/                   # Pipeline bảo mật (Auth, Rate Limit, Validate)
 ├── prisma/                       # Schema và migrations
-├── queues/                       # Hàng đợi BullMQ
+├── queues/                       # Cấu hình BullMQ & MailWorker (chạy trên Daemon)
 ├── Router/                       # Khai báo các tuyến API
-├── Service/                      # Logic nghiệp vụ chi tiết
-│   ├── aiProxy.service.ts
-│   ├── bookingService.ts
-│   ├── reconciliationService.ts
-│   ├── ticketService.ts          # Logic quản lý vé Admin
-│   ├── walletService.ts          # Quản lý ví & Chặn giao dịch
-│   └── ...
+├── Service/                      # Logic nghiệp vụ chi tiết (Booking, Wallet, AI...)
 ├── tests/                        # Bộ kiểm thử tự động (Jest + Supertest)
-├── Utils/                        # Tiện ích
-│   ├── encryption.ts             # Mã hóa AES-256-GCM
-│   ├── payos.ts                  # Class xử lý chữ ký PayOS
-│   └── redisLock.ts              # Dual Redis & Lock helper
+│   └── utils/dbTestHelper.ts     # Helper tự động dọn dẹp DB test
+├── Utils/                        # Tiện ích (payos, redisLock, auditSigner...)
 ├── Validation/                   # Schema Zod
-├── .env                          # Biến môi trường
+├── Dockerfile                    # Build riêng cho BullMQ Worker (Vercel Daemons)
 ├── app.ts                        # Cấu hình Express App
 ├── server.ts                     # Khởi tạo Express Server
-└── vercel.json
+└── vercel.json                   # Cấu hình Deploy Vercel
 ```
 
 ---
 
 ## ⚙️ 6. Cấu Hình Môi Trường (.env)
 
+Tạo file `.env` ở thư mục gốc và cấu hình các biến sau (tham khảo file `.env.example`):
+
 ```env
 # Database
-DATABASE_URL="postgresql://postgres:password@host:5432/db_name"
+DATABASE_URL="postgresql://user:password@host:5432/db_name"
 
-# Gemini AI (Dùng cho Semantic Search & Quét bất thường)
+# Gemini AI (Tìm kiếm ngữ nghĩa & Phân tích AIOps)
 GEMINI_API_KEY="AIzaSy..."
 GEMINI_SECONDARY_KEY="AIzaSy..."
 
-# Redis (Dual)
-REDIS_URL="redis://default:token@host:6379"
-REDIS_URL_BACKUP="redis://default:token@backup_host:6379"
+# Redis (Dual - HA)
+REDIS_URL="redis://default:YOUR_TOKEN@YOUR_HOST:6379"
+REDIS_URL_BACKUP="redis://default:YOUR_TOKEN@YOUR_BACKUP_HOST:6379"
 
 # Frontend & CORS
 VITE_API_URL="http://localhost:3000/api"
 FRONTEND_URL="https://ticket-lekhai.vercel.app"
 NODE_ENV="production"
 
-# JWT & Encryption
-JWT_SECRET="legacy_secret_key"
-JWT_ACCESS_SECRET="your_access_secret"
-JWT_REFRESH_SECRET="your_refresh_secret"
-ENCRYPTION_KEY="64_ky_tu_hex_de_ma_hoa_du_lieu"
+# JWT
+JWT_SECRET="legacy_secret"
+JWT_ACCESS_SECRET="YOUR_ACCESS_SECRET_AT_LEAST_32_CHARS"
+JWT_REFRESH_SECRET="YOUR_REFRESH_SECRET_AT_LEAST_32_CHARS"
 
 # Cloudinary (Dual)
-CLOUDINARY_CLOUD_NAME="your_cloud"
-CLOUDINARY_API_KEY="your_key"
-CLOUDINARY_API_SECRET="your_secret"
-CLOUDINARY_CLOUD_NAME_BACKUP="your_backup_cloud"
-CLOUDINARY_API_KEY_BACKUP="your_backup_key"
-CLOUDINARY_API_SECRET_BACKUP="your_backup_secret"
+CLOUDINARY_CLOUD_NAME="YOUR_CLOUD_NAME"
+CLOUDINARY_API_KEY="YOUR_API_KEY"
+CLOUDINARY_API_SECRET="YOUR_API_SECRET"
+CLOUDINARY_CLOUD_NAME_BACKUP="YOUR_BACKUP_CLOUD_NAME"
+CLOUDINARY_API_KEY_BACKUP="YOUR_BACKUP_API_KEY"
+CLOUDINARY_API_SECRET_BACKUP="YOUR_BACKUP_API_SECRET"
 
-# Resend (Email)
-RESEND_API_KEY="re_..."
-fromEmail="abc@gmail.com"
+# Resend (Email Worker)
+RESEND_API_KEY="re_YOUR_API_KEY"
+fromEmail="NexusTicket <no-reply@yourdomain.com>"
 
 # WebAuthn / Passkeys
-WEBAUTHN_RP_ID="ticket-lekhai.vercel.app"
-WEBAUTHN_ORIGIN="https://ticket-lekhai.vercel.app"
+WEBAUTHN_RP_ID="localhost"
+WEBAUTHN_ORIGIN="http://localhost:5173"
 
-# PayOS Payment Gateway (Production)
-PAYOS_CLIENT_ID="your_client_id"
-PAYOS_API_KEY="your_api_key"
-PAYOS_CHECKSUM_KEY="your_checksum_key"
+# PayOS Payment Gateway
+PAYOS_CLIENT_ID="YOUR_CLIENT_ID"
+PAYOS_API_KEY="YOUR_API_KEY"
+PAYOS_CHECKSUM_KEY="YOUR_CHECKSUM_KEY"
 
-# Bảo mật cho Cron Job (Dùng cho Vercel hoặc Cron bên ngoài gọi API)
-CRON_SECRET="nexusticket_secret_123456"
+# Bảo mật mở rộng
+CRON_SECRET="YOUR_CRON_SECRET"
+AUDIT_SECRET_KEY="YOUR_AUDIT_SECRET_HMAC_KEY"
 ```
 
 ---
 
 ## 🚀 7. Hướng Dẫn Cài Đặt & Chạy
 
-### 7.1. Backend
+### 7.1. Chạy Local (Backend & Frontend)
+
+**Backend:**
 
 ```bash
 npm install
@@ -252,7 +230,7 @@ npx prisma db push
 npm run dev
 ```
 
-### 7.2. Frontend
+**Frontend:**
 
 ```bash
 cd frontend
@@ -260,25 +238,34 @@ npm install
 npm run dev
 ```
 
-### 7.3. Cấu hình Cron Job (Quan trọng trên Vercel)
+### 7.2. Triển khai Mail Worker (Vercel Daemons + Docker)
 
-Vì gói Hobby của Vercel giới hạn Cron Job 1 lần/ngày, hệ thống sử dụng kết hợp:
+Do Vercel Serverless không chạy được Background Process liên tục, hệ thống sử dụng **Vercel Daemons** để chạy BullMQ Worker thông qua Docker. File `Dockerfile` đã được tối ưu đa tầng (multi-stage build) để tránh lỗi Prisma Generate và giảm dung lượng Image.
 
-1. **Đối soát tài chính (03:00 AM hàng ngày):** Có thể dùng Vercel Cron (khai báo trong `vercel.json`) hoặc Cron ngoài.
-2. **AI Quét vé bất thường (Mỗi 15 phút):** Bắt buộc dùng dịch vụ ngoài (như `cron-job.org` hoặc `Upstash QStash`).
-   - **URL gọi:** `GET https://[domain-cua-ban]/api/admin/cron/ticket-auditor`
-   - **Header bảo mật:** `Authorization: Bearer [CRON_SECRET_CỦA_BẠN]`
+### 7.3. Cấu hình Cron Job (Sử dụng Dịch vụ Ngoài)
+
+Vì gói Hobby của Vercel giới hạn Cron Job 1 lần/ngày, hệ thống sử dụng dịch vụ ngoài (như `cron-job.org`) để gọi API định kỳ. Cần cấu hình **3 Cron Job** sau:
+
+1. **Làm mới báo cáo doanh thu (Khuyên dùng: 15 phút/lần):**
+   - **URL:** `GET https://[domain-cua-ban]/api/admin/cron/refresh-analytics`
+   - **Header:** `Authorization: Bearer [CRON_SECRET_CỦA_BẠN]`
+2. **AI Quét vé bất thường (Khuyên dùng: 15 phút/lần):**
+   - **URL:** `GET https://[domain-cua-ban]/api/admin/cron/ticket-auditor`
+   - **Header:** `Authorization: Bearer [CRON_SECRET_CỦA_BẠN]`
+3. **Đối soát tài chính (Chạy 1 lần/ngày vào 03:00 AM):**
+   - **URL:** `GET https://[domain-cua-ban]/api/admin/cron/reconciliation`
+   - **Header:** `Authorization: Bearer [CRON_SECRET_CỦA_BẠN]`
 
 ---
 
 ## 💡 8. Ghi Chú & Lưu Ý
 
 - **Thanh toán thật:** Hệ thống đang chạy PayOS ở môi trường Production. Mọi giao dịch đều trừ tiền thật.
-- **Passkeys trên Vercel:** Đảm bảo biến môi trường `WEBAUTHN_RP_ID` và `WEBAUTHN_ORIGIN` được cấu hình chính xác.
+- **Passkeys trên Vercel:** Đảm bảo biến môi trường `WEBAUTHN_RP_ID` và `WEBAUTHN_ORIGIN` được cấu hình chính xác với domain thực tế.
 - **Trình duyệt hỗ trợ Passkeys:** Trên iOS, khuyên dùng Safari hoặc Brave để tránh lỗi API WebAuthn của Chrome.
 
 ---
 
-_Cập nhật lần cuối: 17h17,09/11/2026_  
+_Cập nhật lần cuối: 11/11/2026_  
 _Tác giả: Lê Hoàng Khải_  
 _Repository: [https://github.com/lekhai123/Ticket](https://github.com/lekhai123/Ticket)_
