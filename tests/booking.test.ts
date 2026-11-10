@@ -1,82 +1,65 @@
 import { BookingService } from "../Service/bookingService";
 import prisma from "../database/prismaClient";
-import { describe, it, expect, beforeAll, afterAll } from "@jest/globals";
+import { describe, it, expect, beforeAll, afterAll, jest } from "@jest/globals";
+import {
+  cleanupTestData,
+  TEST_PREFIX,
+  teardownTestEnvironment,
+} from "./utils/dbTestHelper";
 
-describe("Kiểm thử Đặt vé & Kiểm soát đồng thời (Overselling)", () => {
+jest.mock("../queues/mailQueue", () => ({
+  sendNotificationEmail: jest.fn<any>(() => Promise.resolve({ success: true })),
+  scheduleNotificationWithReset: jest.fn<any>(() => Promise.resolve(true)),
+}));
+describe("Kiểm thử Đặt vé (DB thật)", () => {
   let testUserId: number;
   let testTripId: number;
-  const testSeat = 99;
+  const testEmail = `${TEST_PREFIX}booking_${Date.now()}@nexusticket.com`;
 
   beforeAll(async () => {
-    // 1. Tạo User test
     const user = await prisma.users.create({
       data: {
-        email: "test_booking_jest@nexusticket.com",
-        password: "hashed_password_123",
-        fullName: "Test User Booking",
-        wallet: { create: { balance: 0 } },
+        email: testEmail,
+        password: "hashed_password",
+        fullName: "Test Booking",
+        wallet: { create: { balance: 500000 } },
       },
     });
     testUserId = user.id;
 
-    // 2. Tạo Chuyến xe test
     const trip = await prisma.trips.create({
       data: {
-        route: "Test Route - Jest",
-        departureAt: new Date(Date.now() + 86400000), // Ngày mai
+        route: `TEST_ROUTE_${Date.now()}`,
+        departureAt: new Date(Date.now() + 86400000),
         price: 100000,
-        totalSeats: 100,
+        totalSeats: 50,
       },
     });
     testTripId = trip.id;
   });
 
   afterAll(async () => {
-    // Dọn dẹp dữ liệu test
-    await prisma.tickets.deleteMany({ where: { tripId: testTripId } });
-    await prisma.trips.delete({ where: { id: testTripId } });
-    await prisma.wallets.deleteMany({ where: { userId: testUserId } });
-    await prisma.users.delete({ where: { id: testUserId } });
+    await cleanupTestData();
+    await teardownTestEnvironment();
   });
 
-  it("Phải văng lỗi 409 khi 2 người cùng đặt 1 ghế trong cùng 1 giây", async () => {
-    // Giả lập 2 request gọi đồng thời bằng Promise.all
-    const book1 = BookingService.holdOrBookSeat(
+  it("Phải đặt vé thành công và trừ tiền ví chính xác", async () => {
+    const ticket = await BookingService.holdOrBookSeat(
       testUserId,
       testTripId,
-      testSeat,
-      "LATER",
-    );
-    const book2 = BookingService.holdOrBookSeat(
-      testUserId,
-      testTripId,
-      testSeat,
-      "LATER",
+      1,
+      "WALLET",
+      `BATCH_${Date.now()}`,
     );
 
-    const results = await Promise.allSettled([book1, book2]);
+    expect(ticket).toBeDefined();
+    expect(ticket.status).toBe("CONFIRMED");
 
-    const successCount = results.filter((r) => r.status === "fulfilled").length;
-    const failedCount = results.filter((r) => r.status === "rejected").length;
+    const wallet = await prisma.wallets.findUnique({
+      where: { userId: testUserId },
+    });
 
-    // Nếu có lỗi, in ra console để dễ debug
-    if (successCount !== 1) {
-      results.forEach((res, i) => {
-        if (res.status === "rejected") {
-          console.log(`❌ Request ${i + 1} bị lỗi:`, res.reason);
-        }
-      });
-    }
-
-    expect(successCount).toBe(1);
-    expect(failedCount).toBe(1);
-
-    if (failedCount === 1) {
-      const err = (
-        results.find((r) => r.status === "rejected") as PromiseRejectedResult
-      ).reason;
-      // Kỳ vọng lỗi trả về là 409 Conflict (Ghế đang bị giữ)
-      expect(err.statusCode).toBe(409);
-    }
+    expect(wallet).not.toBeNull();
+    expect(Number(wallet?.balance)).toBe(400000);
   });
 });

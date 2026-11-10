@@ -6,7 +6,8 @@
   "scripts": {
     "postinstall": "prisma generate",
     "dev": "tsx watch server.ts",
-    "test": "jest --runInBand",
+    "test": "jest --runInBand --silent --detectOpenHandles",
+    "test:coverage": "jest --runInBand --silent --coverage",
     "dev:fe": "cd frontend && npm run dev",
     "setup": "npm install && cd frontend && npm install && cd .. && npx prisma generate && npx prisma migrate deploy",
     "build": "tsup server.ts queues/mailWorker.ts --out-dir dist-api --format esm --no-splitting",

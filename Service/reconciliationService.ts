@@ -1,7 +1,7 @@
 import prisma from "../database/prismaClient";
 import { AIReconciliationAnalyzer } from "./aiReconciliationAnalyzer.service";
 import { sendNotificationEmail } from "../queues/mailQueue";
-import { AuditSigner } from "../Utils/auditSigner"; // ✅ Thêm import
+import { AuditSigner } from "../Utils/auditSigner";
 
 export interface MismatchDetail {
   userId: number;
@@ -84,13 +84,12 @@ export class ReconciliationService {
         for (const wallet of wallets) {
           const auditLogs = logsByUser.get(wallet.userId) || [];
           let calculatedBalance = 0;
-          let hasTamperedLog = false; // Cờ đánh dấu phát hiện Hacker
+          let hasTamperedLog = false;
 
           for (const log of auditLogs) {
             const newData = log.newData as Record<string, any> | null;
             if (!newData || typeof newData.amount !== "number") continue;
 
-            // KIỂM TRA CHỮ KÝ SỐ (CHỐNG HACKER SỬA LOG)
             const isValidSignature = AuditSigner.verifySignature(
               {
                 requestId: log.requestId,
@@ -108,8 +107,8 @@ export class ReconciliationService {
               console.error(
                 `[SECURITY ALERT] Phát hiện AuditLog ID ${log.id} của User ${wallet.userId} bị can thiệp trái phép!`,
               );
-              hasTamperedLog = true; // Đánh dấu là đã có can thiệp
-              continue; // Bỏ qua không tính số tiền giả này
+              hasTamperedLog = true;
+              continue;
             }
 
             const rawAmount = newData.amount;
@@ -130,7 +129,6 @@ export class ReconciliationService {
             (actualBalance - calculatedBalance).toFixed(2),
           );
 
-          // ĐIỀU KIỆN SỬA: Nếu lệch tiền HOẶC phát hiện sửa Log -> Đưa vào danh sách vi phạm
           if (Math.abs(difference) > 0.001 || hasTamperedLog) {
             const isDebt = calculatedBalance < 0;
 
@@ -149,16 +147,14 @@ export class ReconciliationService {
 
             try {
               await prisma.$transaction(async (tx) => {
-                // Khóa ví ngay lập tức
                 await tx.wallets.update({
                   where: { id: wallet.id },
                   data: {
-                    // Nếu có cờ báo Hacker sửa log, KHÔNG trừ tiền tự động (giữ nguyên actualBalance để Admin điều tra)
                     balance: hasTamperedLog ? actualBalance : calculatedBalance,
                     isLocked: true,
                   },
                 });
-                // Ghi log AIOps cảnh báo
+
                 await tx.auditLog.create({
                   data: {
                     requestId: `AIOPS-SECURITY-${Date.now()}-${wallet.id}`,
@@ -169,10 +165,8 @@ export class ReconciliationService {
                     resourceId: wallet.id.toString(),
                     oldData: { actualBalance, isLocked: wallet.isLocked },
                     newData: {
-                      // Nếu là Hacker sửa log thì không trừ tiền (amount = 0)
                       amount: hasTamperedLog ? 0 : -difference,
                       adjustedAmount: hasTamperedLog ? 0 : -difference,
-                      // Log số dư cuối cùng phải khớp với DB
                       newBalance: hasTamperedLog
                         ? actualBalance
                         : calculatedBalance,
@@ -186,6 +180,7 @@ export class ReconciliationService {
                   },
                 });
               });
+
               if (wallet.user?.email) {
                 await sendNotificationEmail({
                   email: wallet.user.email,
@@ -227,6 +222,9 @@ export class ReconciliationService {
         orderBy: { createdAt: "desc" },
       });
 
+      //Khai báo biến timeoutId để có thể clear
+      let timeoutId: NodeJS.Timeout;
+
       try {
         const aiPromise = AIReconciliationAnalyzer.analyzeMismatches(
           mismatchedAccounts,
@@ -234,9 +232,9 @@ export class ReconciliationService {
           logsSample,
         );
 
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error("AI_TIMEOUT")), 25000),
-        );
+        const timeoutPromise = new Promise((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error("AI_TIMEOUT")), 25000);
+        });
 
         aiAnalysis = (await Promise.race([aiPromise, timeoutPromise])) as any;
       } catch (aiError: any) {
@@ -251,6 +249,8 @@ export class ReconciliationService {
           recommendedAction:
             "Kiểm tra thủ công danh sách mảng mismatchedAccounts.",
         };
+      } finally {
+        if (timeoutId!) clearTimeout(timeoutId);
       }
     }
 
