@@ -15,6 +15,8 @@ export interface NotificationJobData {
     | "BOOKING_CANCEL"
     | "ADMIN_REVOKE"
     | "ADMIN_REVOKE_BATCH"
+    | "ADMIN_REVOKE_MULTIPLE"
+    | "WALLET_LOCKED_AI"
     | "ADMIN_GIFT"
     | "ADMIN_REVOKE_GIFT";
   data: Record<string, any>;
@@ -55,15 +57,11 @@ export async function scheduleNotificationWithReset(
   },
   opts: { delayMs: number; jobId: string },
 ) {
-  // SỬA LỖI TẠI ĐÂY: BullMQ không cho phép dấu ":" trong jobId
-  // Thay thế tất cả dấu ":" bằng "-"
   const safeJobId = opts.jobId.replace(/:/g, "-");
 
   try {
     const existing = await mailQueue.getJob(safeJobId);
-    if (existing) {
-      await existing.remove();
-    }
+    if (existing) await existing.remove();
   } catch (err: any) {
     console.warn(`[MAIL] Không thể xóa job cũ ${safeJobId}:`, err?.message);
   }
@@ -77,7 +75,6 @@ export async function scheduleNotificationWithReset(
       removeOnComplete: 200,
       removeOnFail: 500,
     });
-    console.log(`[MAIL] Đã xếp lịch job thành công: ${safeJobId}`);
   } catch (err: any) {
     console.error(`[MAIL] Lỗi khi xếp lịch job ${safeJobId}:`, err);
   }

@@ -1,5 +1,6 @@
 import prisma from "../database/prismaClient";
 import { AIReconciliationAnalyzer } from "./aiReconciliationAnalyzer.service";
+import { sendNotificationEmail } from "../queues/mailQueue";
 
 export interface MismatchDetail {
   userId: number;
@@ -165,6 +166,23 @@ export class ReconciliationService {
                   },
                 });
               });
+
+              if (wallet.user?.email) {
+                await sendNotificationEmail({
+                  email: wallet.user.email,
+                  type: "WALLET_LOCKED_AI",
+                  data: {
+                    userName: wallet.user.fullName,
+                    actualBalance: actualBalance,
+                    calculatedBalance: calculatedBalance,
+                  },
+                }).catch((err) =>
+                  console.error(
+                    "[RECONCILIATION] Lỗi đẩy job gửi mail khóa ví:",
+                    err,
+                  ),
+                );
+              }
             } catch (txError: any) {
               console.error(
                 `[RECONCILIATION] Lỗi khi xử lý ví ${wallet.id}:`,

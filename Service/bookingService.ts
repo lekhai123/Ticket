@@ -514,6 +514,7 @@ export class BookingService {
 
     return result;
   }
+
   static async adminRevokeMultipleTickets(
     ticketIds: number[],
     adminUserId: number,
@@ -601,8 +602,12 @@ export class BookingService {
           await scheduleNotificationWithReset(
             {
               email,
-              type: "ADMIN_REVOKE_BATCH",
-              data: { userId, batchId: null, reason },
+              type: "ADMIN_REVOKE_MULTIPLE",
+              data: {
+                userId,
+                ticketIds: userTickets.map((t) => t.id),
+                reason,
+              },
             },
             {
               delayMs: 10000,
