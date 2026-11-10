@@ -204,7 +204,7 @@ export class ReconciliationService {
     if (mismatchedAccounts.length > 0) {
       logsSample = await prisma.auditLog.findMany({
         where: { userId: { in: mismatchedAccounts.map((a) => a.userId) } },
-        take: 15,
+        take: 5,
         orderBy: { createdAt: "desc" },
       });
 
@@ -216,7 +216,7 @@ export class ReconciliationService {
         );
 
         const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error("AI_TIMEOUT")), 15000),
+          setTimeout(() => reject(new Error("AI_TIMEOUT")), 25000),
         );
 
         aiAnalysis = (await Promise.race([aiPromise, timeoutPromise])) as any;

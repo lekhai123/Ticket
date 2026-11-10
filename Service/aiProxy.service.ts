@@ -32,10 +32,11 @@ export class AIProxyService {
         const genAI = new GoogleGenerativeAI(provider.apiKey);
         const model = genAI.getGenerativeModel({ model: provider.modelName });
 
+        // Tăng thời gian chờ lên 20 giây để AI kịp xử lý JSON dài
         const response = await Promise.race([
           model.generateContent(prompt),
           new Promise<any>((_, reject) =>
-            setTimeout(() => reject(new Error("Timeout AI sau 10s")), 10000),
+            setTimeout(() => reject(new Error("Timeout AI sau 20s")), 20000),
           ),
         ]);
 
