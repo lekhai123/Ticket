@@ -392,11 +392,13 @@ export class AdminService {
         try {
           const start = Date.now();
           const genAI = new GoogleGenerativeAI(primaryKey);
-          const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+          // ✅ ĐÃ ĐỔI SANG MODEL 3.8-FLASH
+          const model = genAI.getGenerativeModel({ model: "gemini-3.8-flash" });
           await model.countTokens("ping");
           geminiHealth.primary.latency = `${Date.now() - start}ms`;
-        } catch (error) {
+        } catch (error: any) {
           geminiHealth.primary.status = "DOWN";
+          console.error("[HEALTH CHECK] Primary Key lỗi:", error.message);
         }
       } else {
         geminiHealth.primary.status = "UNCONFIGURED";
@@ -407,11 +409,13 @@ export class AdminService {
         try {
           const start = Date.now();
           const genAI = new GoogleGenerativeAI(backupKey);
-          const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+          // ✅ ĐÃ ĐỔI SANG MODEL 3.8-FLASH
+          const model = genAI.getGenerativeModel({ model: "gemini-3.8-flash" });
           await model.countTokens("ping");
           geminiHealth.backup.latency = `${Date.now() - start}ms`;
-        } catch (error) {
+        } catch (error: any) {
           geminiHealth.backup.status = "DOWN";
+          console.error("[HEALTH CHECK] Backup Key lỗi:", error.message);
         }
       } else {
         geminiHealth.backup.status = "UNCONFIGURED";
@@ -469,7 +473,7 @@ export class AdminService {
           status: geminiHealth.backup.status,
           latencyMs: geminiHealth.backup.latency,
         },
-        model: "gemini-2.5-flash",
+        model: "gemini-3.8-flash", // ✅ ĐÃ ĐỔI TÊN HIỂN THỊ
         activeKey:
           geminiHealth.primary.status === "HEALTHY"
             ? "PRIMARY_KEY"
