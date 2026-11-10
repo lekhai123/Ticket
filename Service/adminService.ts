@@ -393,7 +393,7 @@ export class AdminService {
           const start = Date.now();
           const genAI = new GoogleGenerativeAI(primaryKey);
           // ✅ ĐÃ ĐỔI SANG MODEL 2.0-FLASH
-          const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+          const model = genAI.getGenerativeModel({ model: "gemini-3.8-flash" });
           await model.countTokens("ping");
           geminiHealth.primary.latency = `${Date.now() - start}ms`;
         } catch (error: any) {
@@ -409,7 +409,7 @@ export class AdminService {
         try {
           const start = Date.now();
           const genAI = new GoogleGenerativeAI(backupKey);
-          const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+          const model = genAI.getGenerativeModel({ model: "gemini-3.8-flash" });
           await model.countTokens("ping");
           geminiHealth.backup.latency = `${Date.now() - start}ms`;
         } catch (error: any) {
@@ -472,7 +472,7 @@ export class AdminService {
           status: geminiHealth.backup.status,
           latencyMs: geminiHealth.backup.latency,
         },
-        model: "gemini-2.0-flash", 
+        model: "gemini-3.8-flash",
         activeKey:
           geminiHealth.primary.status === "HEALTHY"
             ? "PRIMARY_KEY"
