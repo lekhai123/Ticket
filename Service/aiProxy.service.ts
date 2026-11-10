@@ -12,12 +12,12 @@ export class AIProxyService {
     {
       name: "Gemini-Primary",
       apiKey: process.env.GEMINI_PRIMARY_KEY || "",
-      modelName: "gemini-3.8-flash",
+      modelName: "gemini-3.6-flash",
     },
     {
       name: "Gemini-Secondary",
       apiKey: process.env.GEMINI_SECONDARY_KEY || "",
-      modelName: "gemini-3.8-flash",
+      modelName: "gemini-3.6-flash",
     },
   ];
 
