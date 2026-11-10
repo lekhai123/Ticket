@@ -10,6 +10,23 @@ export interface MismatchDetail {
   status: "DEBITED_AND_FROZEN" | "DEBT_GENERATED_AND_FROZEN";
 }
 
+const ACTION_SIGN: Record<string, 1 | -1> = {
+  TOP_UP: 1,
+  MASS_GIFT_RECEIVED: 1,
+  MASS_GIFT: 1,
+  REFUND_TICKET_PAYMENT: 1,
+  CANCEL_TICKET_REFUND: 1,
+  CREDIT: 1,
+
+  BOOK_TICKET_PAYMENT: -1,
+  BOOK_TICKET_BATCH: -1,
+  MASS_GIFT_REVOKED: -1,
+  REVOKE_BATCH: -1,
+  WITHDRAW: -1,
+  DEBIT: -1,
+  SYSTEM_AUTO_DEBIT_AND_FREEZE: -1,
+};
+
 export class ReconciliationService {
   static async runDailyReconciliation() {
     console.log(
@@ -17,7 +34,6 @@ export class ReconciliationService {
     );
     const startTime = Date.now();
 
-    // THÊM BATCH ID CHUNG CHO CẢ ĐỢT ĐỐI SOÁT
     const reconBatchId = `AIOPS_RECON_${new Date().toISOString().split("T")[0]}`;
 
     const mismatchedAccounts: MismatchDetail[] = [];
@@ -73,23 +89,14 @@ export class ReconciliationService {
 
             const rawAmount = newData.amount;
             const action = log.action.toUpperCase();
+            const sign = ACTION_SIGN[action];
 
-            if (rawAmount < 0) {
-              calculatedBalance += rawAmount;
+            if (sign === 1) {
+              calculatedBalance += Math.abs(rawAmount);
+            } else if (sign === -1) {
+              calculatedBalance -= Math.abs(rawAmount);
             } else {
-              if (
-                ["TOP_UP", "MASS_GIFT", "REFUND", "CREDIT"].some((a) =>
-                  action.includes(a),
-                )
-              ) {
-                calculatedBalance += rawAmount;
-              } else if (
-                ["BOOK_TICKET", "REVOKE", "WITHDRAW", "DEBIT"].some((a) =>
-                  action.includes(a),
-                )
-              ) {
-                calculatedBalance -= rawAmount;
-              }
+              calculatedBalance += rawAmount;
             }
           }
 
@@ -140,7 +147,7 @@ export class ReconciliationService {
                     requestId: `AIOPS-RECON-${Date.now()}-${wallet.id}`,
                     userId: wallet.userId,
                     action: "SYSTEM_AUTO_DEBIT_AND_FREEZE",
-                    batchId: reconBatchId, // ✅ ĐÃ THÊM BATCH ID VÀO ĐÂY
+                    batchId: reconBatchId,
                     resource: "Wallets",
                     resourceId: wallet.id.toString(),
                     oldData: { actualBalance, isLocked: wallet.isLocked },
