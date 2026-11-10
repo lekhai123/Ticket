@@ -297,11 +297,16 @@ export class TripService {
 
     const now = new Date();
 
-    // 1. Xử lý từ khóa thời gian (Sáng, Chiều, Tối)
+    // 1. Xử lý từ khóa thời gian (Mở rộng thêm "đêm", "tối nay", v.v.)
     let timeConditionPrisma: any = { departureAt: { gt: now } };
     let timeConditionSQL = "";
+    let hasTimeFilter = false;
 
-    if (cleanPrompt.includes("tối")) {
+    if (
+      cleanPrompt.includes("tối") ||
+      cleanPrompt.includes("đêm") ||
+      cleanPrompt.includes("khuya")
+    ) {
       const startEvening = new Date(now);
       startEvening.setHours(18, 0, 0, 0);
       const endEvening = new Date(now);
@@ -312,6 +317,7 @@ export class TripService {
         departureAt: { gte: searchStart, lte: endEvening },
       };
       timeConditionSQL = `AND EXTRACT(HOUR FROM "departureAt") >= 18`;
+      hasTimeFilter = true;
     } else if (cleanPrompt.includes("sáng")) {
       const startMorning = new Date(now);
       startMorning.setHours(0, 0, 0, 0);
@@ -327,6 +333,7 @@ export class TripService {
 
       timeConditionPrisma = { departureAt: { gt: searchStart } };
       timeConditionSQL = `AND EXTRACT(HOUR FROM "departureAt") < 12`;
+      hasTimeFilter = true;
     } else if (cleanPrompt.includes("chiều")) {
       const startAfternoon = new Date(now);
       startAfternoon.setHours(12, 0, 0, 0);
@@ -338,9 +345,10 @@ export class TripService {
         departureAt: { gte: searchStart, lte: endAfternoon },
       };
       timeConditionSQL = `AND EXTRACT(HOUR FROM "departureAt") >= 12 AND EXTRACT(HOUR FROM "departureAt") < 18`;
+      hasTimeFilter = true;
     }
 
-    // 2. Lọc stop words CƠ BẢN (Chỉ lọc đại từ nhân xưng/động từ thừa, giữ lại tính từ miêu tả)
+    // 2. Lọc bỏ các từ nhiễu (CHỈ dùng cho SQL ILIKE, giữ nguyên câu cho AI)
     const stopWords = [
       "tôi",
       "mình",
@@ -363,59 +371,82 @@ export class TripService {
       "những",
       "các",
       "một",
-      "những",
       "cho",
     ];
     const searchTerms = cleanPrompt
       .split(/\s+/)
       .filter((w) => !stopWords.includes(w));
-
     const keywordSearch = searchTerms.length > 0 ? searchTerms.join(" ") : "";
 
-    // 3. CHẠY SONG SONG: Text Search (ILIKE) và Lấy Vector AI
     const resultMap = new Map<number, any>();
 
-    // 3.1. Tìm kiếm Text (Dùng toán tử AND để tìm chính xác nhất)
-    const whereCondition: any = { ...timeConditionPrisma };
+    // 3. TÌM KIẾM TEXT (Lần 1: Có bộ lọc thời gian)
     if (searchTerms.length > 0) {
+      const whereCondition: any = { ...timeConditionPrisma };
       whereCondition.AND = searchTerms.map((term) => ({
         OR: [
           { route: { contains: term, mode: "insensitive" } },
           { description: { contains: term, mode: "insensitive" } },
         ],
       }));
+
+      const keywordTrips = await prisma.trips.findMany({
+        where: whereCondition,
+        take: limit,
+        orderBy: { departureAt: "asc" },
+        include: {
+          tickets: {
+            where: { status: { in: ["HELD", "PENDING", "CONFIRMED"] } },
+            select: { seatNumber: true },
+          },
+        },
+      });
+
+      keywordTrips.forEach((trip) =>
+        resultMap.set(trip.id, this.formatTripWithSeats(trip)),
+      );
     }
 
-    const keywordTrips = await prisma.trips.findMany({
-      where: whereCondition,
-      take: limit,
-      orderBy: { departureAt: "asc" },
-      include: {
-        tickets: {
-          where: { status: { in: ["HELD", "PENDING", "CONFIRMED"] } },
-          select: { seatNumber: true },
+    // 4. NẾU ÁP DỤNG THỜI GIAN MÀ KHÔNG CÓ KẾT QUẢ -> TỰ ĐỘNG BỎ LỌC THỜI GIAN (Fallback)
+    if (hasTimeFilter && resultMap.size === 0 && searchTerms.length > 0) {
+      console.log(
+        "[SEARCH] Không có chuyến đúng giờ, tự động mở rộng tìm kiếm bỏ qua thời gian.",
+      );
+      const whereCondition: any = { departureAt: { gt: now } };
+      whereCondition.AND = searchTerms.map((term) => ({
+        OR: [
+          { route: { contains: term, mode: "insensitive" } },
+          { description: { contains: term, mode: "insensitive" } },
+        ],
+      }));
+
+      const fallbackTrips = await prisma.trips.findMany({
+        where: whereCondition,
+        take: limit,
+        orderBy: { departureAt: "asc" },
+        include: {
+          tickets: {
+            where: { status: { in: ["HELD", "PENDING", "CONFIRMED"] } },
+            select: { seatNumber: true },
+          },
         },
-      },
-    });
+      });
+      fallbackTrips.forEach((trip) =>
+        resultMap.set(trip.id, this.formatTripWithSeats(trip)),
+      );
+    }
 
-    // Lưu kết quả Text vào Map (Ưu tiên số 1)
-    keywordTrips.forEach((trip) =>
-      resultMap.set(trip.id, this.formatTripWithSeats(trip)),
-    );
-
-    // 3.2. Semantic Search (AI) - Chỉ chạy nếu chưa đủ số lượng HOẶC có câu miêu tả dài
+    // 5. SEMANTIC SEARCH (AI) - Chạy nếu chưa đủ số lượng
     if (keywordSearch && resultMap.size < limit) {
       try {
-        // Đưa NGUYÊN CỤM TỪ KHÓA (đã bỏ từ nối) vào AI.
-        // Ví dụ: "chuyến xe chất lượng cao từ sa pa đi hà nội tiện ích wifi nước uống điều hòa"
-        // -> AI sẽ tự hiểu "chất lượng cao", "wifi"... là ngữ cảnh của Sa Pa - Hà Nội.
-        const queryVector = await this.getEmbedding(keywordSearch);
+        // QUAN TRỌNG: Đưa NGUYÊN CÂU GỐC (cleanPrompt) vào AI để nó hiểu ngữ cảnh
+        // Ví dụ: "tìm xe đi đà lạt buổi tối" -> AI sẽ tự map "buổi tối" với các chuyến 18h+
+        const queryVector = await this.getEmbedding(cleanPrompt);
         const vectorString = `[${queryVector.join(",")}]`;
 
-        // Ngưỡng an toàn 0.70 để tránh gợi ý rác nhưng vẫn đủ nhạy
         const SIMILARITY_THRESHOLD = 0.7;
 
-        const semanticTrips: any[] = await prisma.$queryRawUnsafe(
+        let semanticTrips: any[] = await prisma.$queryRawUnsafe(
           `
           SELECT id, route, "departureAt", price, "totalSeats", description,
                  1 - (embedding <=> $1::vector) AS similarity
@@ -431,7 +462,25 @@ export class TripService {
           limit,
         );
 
-        // 3.3. Gộp kết quả AI vào Map (Loại bỏ trùng lặp)
+        // Nếu AI có thời gian mà vẫn rỗng, thử AI không có thời gian
+        if (semanticTrips.length === 0 && hasTimeFilter) {
+          semanticTrips = await prisma.$queryRawUnsafe(
+            `
+            SELECT id, route, "departureAt", price, "totalSeats", description,
+                   1 - (embedding <=> $1::vector) AS similarity
+            FROM "Trips"
+            WHERE "departureAt" > NOW()
+              AND 1 - (embedding <=> $1::vector) > $2
+            ORDER BY similarity DESC
+            LIMIT $3
+          `,
+            vectorString,
+            SIMILARITY_THRESHOLD,
+            limit,
+          );
+        }
+
+        // Gộp kết quả AI vào Map
         if (semanticTrips.length > 0) {
           const tripIds = semanticTrips.map((t) => t.id);
           const activeTickets = await prisma.tickets.findMany({
@@ -443,7 +492,6 @@ export class TripService {
           });
 
           semanticTrips.forEach((trip) => {
-            // Nếu chuyến xe này chưa có trong kết quả Text Search thì mới thêm vào
             if (!resultMap.has(trip.id)) {
               const tripTickets = activeTickets.filter(
                 (t) => t.tripId === trip.id,
@@ -459,7 +507,6 @@ export class TripService {
                   totalSeats - bookedSeatNumbers.length,
                 ),
                 bookedSeatNumbers,
-                similarityScore: Number(trip.similarity), // Lưu lại điểm AI để debug nếu cần
               });
             }
           });
@@ -472,7 +519,6 @@ export class TripService {
       }
     }
 
-    // 4. Trả về kết quả cuối cùng (Giới hạn số lượng)
     return Array.from(resultMap.values()).slice(0, limit);
   }
 }
