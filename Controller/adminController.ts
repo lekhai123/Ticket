@@ -46,13 +46,16 @@ export class AdminController {
       const adminUserId = (req as any).user?.id || (req as any).user?.userId;
       const { reason } = req.body;
 
-      // 1. Tự động tìm tất cả vé lỗi (giá 0đ hoặc nhỏ hơn giá gốc)
+      // 1. Tự động tìm tất cả vé lỗi giá khá khác gốc
       const anomalies: any[] = await prisma.$queryRaw`
       SELECT t.id 
       FROM "Tickets" t
       JOIN "Trips" tr ON t."tripId" = tr.id
       WHERE t.status = 'CONFIRMED' 
-        AND (t."paidAmount" IS NULL OR t."paidAmount" < tr.price OR t."paidAmount" = 0)
+        AND (
+          t."paidAmount" IS NULL 
+          OR t."paidAmount" != tr.price
+        )
     `;
 
       if (!anomalies || anomalies.length === 0) {
