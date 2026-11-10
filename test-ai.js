@@ -14,11 +14,11 @@ async function testAI() {
     );
     const response = await result.response;
 
-    console.log("✅ Kết quả từ AI:", response.text());
-    console.log(`⏱️ Thời gian phản hồi: ${Date.now() - startTime} ms`);
+    console.log(" Kết quả từ AI:", response.text());
+    console.log(`⏱Thời gian phản hồi: ${Date.now() - startTime} ms`);
   } catch (error) {
-    console.error("❌ Lỗi gọi AI:", error.message);
-    console.log(`⏱️ Thời gian chờ (bị lỗi): ${Date.now() - startTime} ms`);
+    console.error(" Lỗi gọi AI:", error.message);
+    console.log(`Thời gian chờ (bị lỗi): ${Date.now() - startTime} ms`);
   }
 }
 
