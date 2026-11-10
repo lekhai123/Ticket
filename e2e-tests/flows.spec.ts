@@ -23,7 +23,7 @@ test.describe("Luồng trải nghiệm người dùng (E2E)", () => {
     await page.locator('button[type="submit"]:has-text("Đăng nhập")').click();
 
     await page.waitForURL("**/");
-    console.log("✅ Bước 1: Đăng nhập thành công");
+    console.log("Bước 1: Đăng nhập thành công");
 
     const searchInput = page.locator('input[placeholder*="Ví dụ:"]');
     await searchInput.fill("Đà Lạt");
@@ -31,7 +31,7 @@ test.describe("Luồng trải nghiệm người dùng (E2E)", () => {
     await page.locator('button:has-text("Tìm kiếm")').click();
 
     await page.waitForTimeout(2000);
-    console.log("✅ Bước 2: Đã tìm kiếm chuyến xe");
+    console.log(" Bước 2: Đã tìm kiếm chuyến xe");
     const chooseSeatBtn = page.locator('button:has-text("Chọn ghế")').first();
     await expect(chooseSeatBtn).toBeEnabled();
     await chooseSeatBtn.click();
@@ -45,7 +45,7 @@ test.describe("Luồng trải nghiệm người dùng (E2E)", () => {
     await expect(availableSeatBtn).toBeVisible({ timeout: 5000 });
 
     const seatText = await availableSeatBtn.textContent();
-    console.log(`✅ Đang chọn ghế: ${seatText}`);
+    console.log(` Đang chọn ghế: ${seatText}`);
 
     await availableSeatBtn.click();
 
@@ -55,7 +55,7 @@ test.describe("Luồng trải nghiệm người dùng (E2E)", () => {
 
     await page.waitForURL("**/customer/wallet", { timeout: 10000 });
     await page.waitForTimeout(2000);
-    console.log("✅ Bước 3: Đã mua vé thành công bằng ví");
+    console.log(" Bước 3: Đã mua vé thành công bằng ví");
 
     await page.goto("/customer/profile");
 
@@ -71,6 +71,6 @@ test.describe("Luồng trải nghiệm người dùng (E2E)", () => {
 
     const statusText = page.locator('span:has-text("Đã hủy vé")').first();
     await expect(statusText).toBeVisible();
-    console.log("✅ Bước 4: Đã hủy vé và hoàn tiền thành công");
+    console.log(" Bước 4: Đã hủy vé và hoàn tiền thành công");
   });
 });
