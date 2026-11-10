@@ -152,9 +152,12 @@ export class ReconciliationService {
                 // Khóa ví ngay lập tức
                 await tx.wallets.update({
                   where: { id: wallet.id },
-                  data: { balance: calculatedBalance, isLocked: true },
+                  data: {
+                    // Nếu có cờ báo Hacker sửa log, KHÔNG trừ tiền tự động (giữ nguyên actualBalance để Admin điều tra)
+                    balance: hasTamperedLog ? actualBalance : calculatedBalance,
+                    isLocked: true,
+                  },
                 });
-
                 // Ghi log AIOps cảnh báo
                 await tx.auditLog.create({
                   data: {
@@ -166,13 +169,17 @@ export class ReconciliationService {
                     resourceId: wallet.id.toString(),
                     oldData: { actualBalance, isLocked: wallet.isLocked },
                     newData: {
-                      amount: -difference,
-                      adjustedAmount: -difference,
-                      newBalance: calculatedBalance,
+                      // Nếu là Hacker sửa log thì không trừ tiền (amount = 0)
+                      amount: hasTamperedLog ? 0 : -difference,
+                      adjustedAmount: hasTamperedLog ? 0 : -difference,
+                      // Log số dư cuối cùng phải khớp với DB
+                      newBalance: hasTamperedLog
+                        ? actualBalance
+                        : calculatedBalance,
                       isLocked: true,
                       isDebt: isDebt,
                       reason: hasTamperedLog
-                        ? "Phát hiện can thiệp trái phép vào lịch sử giao dịch (AuditLog bị sửa) -> Khóa ví bảo vệ!"
+                        ? "Phát hiện can thiệp trái phép vào lịch sử giao dịch (AuditLog bị sửa) -> Khóa ví bảo vệ, không tự động trừ tiền!"
                         : "Cân bằng lại số dư chuẩn & Khóa ví chờ Admin duyệt",
                     },
                     ipAddress: "127.0.0.1 (CRON_AIOPS)",
