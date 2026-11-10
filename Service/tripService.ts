@@ -340,43 +340,50 @@ export class TripService {
       timeConditionSQL = `AND EXTRACT(HOUR FROM "departureAt") >= 12 AND EXTRACT(HOUR FROM "departureAt") < 18`;
     }
 
-    // 2. Lọc bỏ các từ nhiễu để lấy địa danh/từ khóa chính
+    // 2. Lọc stop words CƠ BẢN (Chỉ lọc đại từ nhân xưng/động từ thừa, giữ lại tính từ miêu tả)
     const stopWords = [
+      "tôi",
+      "mình",
+      "muốn",
+      "cần",
+      "tìm",
       "xe",
       "đi",
       "vé",
       "chuyến",
-      "tìm",
-      "muốn",
-      "cần",
-      "buổi",
-      "tối",
-      "sáng",
-      "chiều",
-      "ngày",
-      "mai",
-      "hôm",
-      "nay",
+      "có",
+      "không",
+      "và",
+      "thì",
+      "là",
+      "ở",
       "từ",
       "đến",
       "về",
-      "có",
-      "không",
+      "những",
+      "các",
+      "một",
+      "những",
+      "cho",
     ];
     const searchTerms = cleanPrompt
       .split(/\s+/)
-      .filter((w) => !stopWords.includes(w) && w.length > 1);
+      .filter((w) => !stopWords.includes(w));
 
-    // Nếu người dùng chỉ gõ "buổi tối" -> keywordSearch rỗng
     const keywordSearch = searchTerms.length > 0 ? searchTerms.join(" ") : "";
 
-    // 3. Tìm kiếm Text (ILIKE) với từ khóa đã lọc (VD: "đà lạt")
+    // 3. CHẠY SONG SONG: Text Search (ILIKE) và Lấy Vector AI
+    const resultMap = new Map<number, any>();
+
+    // 3.1. Tìm kiếm Text (Dùng toán tử AND để tìm chính xác nhất)
     const whereCondition: any = { ...timeConditionPrisma };
-    if (keywordSearch) {
-      whereCondition.OR = [
-        { route: { contains: keywordSearch, mode: "insensitive" } },
-        { description: { contains: keywordSearch, mode: "insensitive" } },
-      ];
+    if (searchTerms.length > 0) {
+      whereCondition.AND = searchTerms.map((term) => ({
+        OR: [
+          { route: { contains: term, mode: "insensitive" } },
+          { description: { contains: term, mode: "insensitive" } },
+        ],
+      }));
     }
 
     const keywordTrips = await prisma.trips.findMany({
@@ -391,61 +398,81 @@ export class TripService {
       },
     });
 
-    if (keywordTrips.length > 0) {
-      return keywordTrips.map((trip) => this.formatTripWithSeats(trip));
-    }
-
-    // Nếu không có địa danh cụ thể (VD: user chỉ gõ "xe buổi tối"), trả về rỗng
-    if (!keywordSearch) return [];
-
-    // 4. Dùng Semantic Search (AI) nếu Text không tìm thấy
-    // Dùng keywordSearch (đã lọc) thay vì cleanPrompt (câu gốc) để AI chấm điểm chính xác hơn
-    const queryVector = await this.getEmbedding(keywordSearch);
-    const vectorString = `[${queryVector.join(",")}]`;
-
-    // Hạ ngưỡng xuống 0.60 để bao quát hơn
-    const SIMILARITY_THRESHOLD = 0.72;
-
-    const trips: any[] = await prisma.$queryRawUnsafe(
-      `
-      SELECT id, route, "departureAt", price, "totalSeats", description,
-             1 - (embedding <=> $1::vector) AS similarity
-      FROM "Trips"
-      WHERE "departureAt" > NOW()
-        ${timeConditionSQL}
-        AND 1 - (embedding <=> $1::vector) > $2
-      ORDER BY similarity DESC
-      LIMIT $3
-    `,
-      vectorString,
-      SIMILARITY_THRESHOLD,
-      limit,
+    // Lưu kết quả Text vào Map (Ưu tiên số 1)
+    keywordTrips.forEach((trip) =>
+      resultMap.set(trip.id, this.formatTripWithSeats(trip)),
     );
 
-    if (!trips || trips.length === 0) {
-      return [];
+    // 3.2. Semantic Search (AI) - Chỉ chạy nếu chưa đủ số lượng HOẶC có câu miêu tả dài
+    if (keywordSearch && resultMap.size < limit) {
+      try {
+        // Đưa NGUYÊN CỤM TỪ KHÓA (đã bỏ từ nối) vào AI.
+        // Ví dụ: "chuyến xe chất lượng cao từ sa pa đi hà nội tiện ích wifi nước uống điều hòa"
+        // -> AI sẽ tự hiểu "chất lượng cao", "wifi"... là ngữ cảnh của Sa Pa - Hà Nội.
+        const queryVector = await this.getEmbedding(keywordSearch);
+        const vectorString = `[${queryVector.join(",")}]`;
+
+        // Ngưỡng an toàn 0.70 để tránh gợi ý rác nhưng vẫn đủ nhạy
+        const SIMILARITY_THRESHOLD = 0.7;
+
+        const semanticTrips: any[] = await prisma.$queryRawUnsafe(
+          `
+          SELECT id, route, "departureAt", price, "totalSeats", description,
+                 1 - (embedding <=> $1::vector) AS similarity
+          FROM "Trips"
+          WHERE "departureAt" > NOW()
+            ${timeConditionSQL}
+            AND 1 - (embedding <=> $1::vector) > $2
+          ORDER BY similarity DESC
+          LIMIT $3
+        `,
+          vectorString,
+          SIMILARITY_THRESHOLD,
+          limit,
+        );
+
+        // 3.3. Gộp kết quả AI vào Map (Loại bỏ trùng lặp)
+        if (semanticTrips.length > 0) {
+          const tripIds = semanticTrips.map((t) => t.id);
+          const activeTickets = await prisma.tickets.findMany({
+            where: {
+              tripId: { in: tripIds },
+              status: { in: ["HELD", "PENDING", "CONFIRMED"] },
+            },
+            select: { tripId: true, seatNumber: true },
+          });
+
+          semanticTrips.forEach((trip) => {
+            // Nếu chuyến xe này chưa có trong kết quả Text Search thì mới thêm vào
+            if (!resultMap.has(trip.id)) {
+              const tripTickets = activeTickets.filter(
+                (t) => t.tripId === trip.id,
+              );
+              const bookedSeatNumbers = tripTickets.map((t) => t.seatNumber);
+              const totalSeats = trip.totalSeats ?? 30;
+
+              resultMap.set(trip.id, {
+                ...trip,
+                totalSeats,
+                availableSeats: Math.max(
+                  0,
+                  totalSeats - bookedSeatNumbers.length,
+                ),
+                bookedSeatNumbers,
+                similarityScore: Number(trip.similarity), // Lưu lại điểm AI để debug nếu cần
+              });
+            }
+          });
+        }
+      } catch (aiError: any) {
+        console.warn(
+          "[AI SEARCH] Lỗi gọi AI, chỉ trả về kết quả Text:",
+          aiError.message,
+        );
+      }
     }
 
-    // Bổ sung số ghế thực tế
-    const tripIds = trips.map((t) => t.id);
-    const activeTickets = await prisma.tickets.findMany({
-      where: {
-        tripId: { in: tripIds },
-        status: { in: ["HELD", "PENDING", "CONFIRMED"] },
-      },
-      select: { tripId: true, seatNumber: true },
-    });
-
-    return trips.map((trip) => {
-      const tripTickets = activeTickets.filter((t) => t.tripId === trip.id);
-      const bookedSeatNumbers = tripTickets.map((t) => t.seatNumber);
-      const totalSeats = trip.totalSeats ?? 30;
-      return {
-        ...trip,
-        totalSeats,
-        availableSeats: Math.max(0, totalSeats - bookedSeatNumbers.length),
-        bookedSeatNumbers,
-      };
-    });
+    // 4. Trả về kết quả cuối cùng (Giới hạn số lượng)
+    return Array.from(resultMap.values()).slice(0, limit);
   }
 }
