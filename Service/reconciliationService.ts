@@ -209,16 +209,29 @@ export class ReconciliationService {
       });
 
       try {
-        aiAnalysis = await AIReconciliationAnalyzer.analyzeMismatches(
+        const aiPromise = AIReconciliationAnalyzer.analyzeMismatches(
           mismatchedAccounts,
           totalWalletsChecked,
           logsSample,
         );
+
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("AI_TIMEOUT")), 15000),
+        );
+
+        aiAnalysis = (await Promise.race([aiPromise, timeoutPromise])) as any;
       } catch (aiError: any) {
         console.error(
           "[RECONCILIATION] Lỗi khi gọi AI phân tích:",
           aiError.message,
         );
+        aiAnalysis = {
+          riskLevel: "HIGH",
+          rootCauseAnalysis:
+            "Hệ thống AI phản hồi quá chậm hoặc đang quá tải. Vui lòng thử lại sau.",
+          recommendedAction:
+            "Kiểm tra thủ công danh sách mảng mismatchedAccounts.",
+        };
       }
     }
 

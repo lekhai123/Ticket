@@ -8,7 +8,6 @@ interface AIProvider {
 }
 
 export class AIProxyService {
-  // Cấu hình danh sách Key ưu tiên: Primary trước, Secondary dự phòng
   private static providers: AIProvider[] = [
     {
       name: "Gemini-Primary",
@@ -22,9 +21,6 @@ export class AIProxyService {
     },
   ];
 
-  /**
-   * 1. Sinh văn bản / Chat có cơ chế tự động Failover
-   */
   static async generateWithFallback(prompt: string): Promise<string> {
     let lastError: any = null;
 
@@ -36,8 +32,14 @@ export class AIProxyService {
         const genAI = new GoogleGenerativeAI(provider.apiKey);
         const model = genAI.getGenerativeModel({ model: provider.modelName });
 
-        const result = await model.generateContent(prompt);
-        const responseText = result.response.text();
+        const response = await Promise.race([
+          model.generateContent(prompt),
+          new Promise<any>((_, reject) =>
+            setTimeout(() => reject(new Error("Timeout AI sau 10s")), 10000),
+          ),
+        ]);
+
+        const responseText = response.response.text();
 
         if (responseText) {
           return responseText;
@@ -45,19 +47,16 @@ export class AIProxyService {
       } catch (error: any) {
         lastError = error;
         console.warn(
-          ` [AI Proxy] Provider ${provider.name} thất bại (${error.message}). Đang tự động chuyển sang Provider dự phòng...`,
+          `[AI Proxy] Provider ${provider.name} thất bại (${error.message}). Đang tự động chuyển sang Provider dự phòng...`,
         );
       }
     }
 
     throw new Error(
-      ` [AI Proxy Critical] Tất cả các AI Provider/Key dự phòng đều sập! Error: ${lastError?.message}`,
+      `[AI Proxy Critical] Tất cả các AI Provider/Key dự phòng đều sập! Error: ${lastError?.message}`,
     );
   }
 
-  /**
-   * 2. Tạo Vector Embedding có tự động xoay vòng Primary -> Secondary
-   */
   static async getEmbeddingWithFallback(text: string): Promise<number[]> {
     const textInput = String(text).trim();
     if (!textInput) {
@@ -71,12 +70,12 @@ export class AIProxyService {
 
       try {
         console.log(
-          ` [AI Proxy Embedding] Đang tạo Vector qua: ${provider.name}...`,
+          `[AI Proxy Embedding] Đang tạo Vector qua: ${provider.name}...`,
         );
         const ai = new GoogleGenAI({ apiKey: provider.apiKey });
 
         const response = await ai.models.embedContent({
-          model: "gemini-embedding-2", // hoặc text-embedding-004
+          model: "gemini-embedding-2",
           contents: [
             {
               role: "user",
@@ -101,7 +100,7 @@ export class AIProxyService {
     }
 
     throw new Error(
-      ` [AI Proxy Critical] Không thể tạo Embedding từ cả Primary lẫn Secondary Key! Error: ${lastError?.message}`,
+      `[AI Proxy Critical] Không thể tạo Embedding từ cả Primary lẫn Secondary Key! Error: ${lastError?.message}`,
     );
   }
 }

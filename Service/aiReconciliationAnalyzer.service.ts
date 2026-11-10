@@ -2,9 +2,6 @@ import { AIProxyService } from "./aiProxy.service";
 import type { MismatchDetail } from "../Service/reconciliationService";
 
 export class AIReconciliationAnalyzer {
-  /**
-   * Đưa dữ liệu đối soát cho Gemini phân tích nguyên nhân gốc & hành vi bất thường
-   */
   static async analyzeMismatches(
     mismatchedAccounts: MismatchDetail[],
     totalWallets: number,
