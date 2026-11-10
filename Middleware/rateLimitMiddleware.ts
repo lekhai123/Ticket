@@ -3,11 +3,6 @@ import { RateLimiter } from "../Utils/rateLimiter";
 
 export const rateLimit = (limit: number, windowInSeconds: number) => {
   return async (req: Request, res: Response, next: NextFunction) => {
-    // ✅ VÔ HIỆU HÓA RATE LIMIT ĐỂ CHẠY LOAD TEST
-    return next();
-
-    /* 
-    // PHẦN CODE CŨ BỊ VÔ HIỆU HÓA TẠM THỜI
     try {
       const ip =
         (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ||
@@ -27,6 +22,5 @@ export const rateLimit = (limit: number, windowInSeconds: number) => {
     } catch (error) {
       next();
     }
-    */
   };
 };
