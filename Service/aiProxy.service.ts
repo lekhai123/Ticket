@@ -18,7 +18,7 @@ export class AIProxyService {
     {
       name: "Gemini-Secondary",
       apiKey: process.env.GEMINI_SECONDARY_KEY || "",
-      modelName: "gemini-1.5-flash",
+      modelName: "gemini-2.5-flash",
     },
   ];
 
