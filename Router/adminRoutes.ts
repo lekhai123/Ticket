@@ -124,6 +124,7 @@ router.post(
   rateLimit(10, 60),
   AdminController.revokeAnomalyTickets,
 );
+router.get("/system-alerts", AdminController.getSystemAlerts);
 router.post("/reconciliation/trigger", rateLimit(10, 60), async (req, res) => {
   try {
     const report = await ReconciliationService.runDailyReconciliation();

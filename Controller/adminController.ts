@@ -238,4 +238,31 @@ export class AdminController {
       message: `Đã mở khóa ví thành công cho User #${numericUserId}!`,
     });
   });
+  static getSystemAlerts = catchAsync(async (req: Request, res: Response) => {
+    // Lấy cảnh báo vé lỗi (từ AI hoặc Cron)
+    const ticketAlert = await prisma.auditLog.findFirst({
+      where: { action: "AI_ANOMALY_ALERT" },
+      orderBy: { createdAt: "desc" },
+    });
+
+    // Lấy cảnh báo ví bị khóa (từ AIOps)
+    const financialAlert = await prisma.auditLog.findFirst({
+      where: { action: "SYSTEM_AUTO_DEBIT_AND_FREEZE" },
+      orderBy: { createdAt: "desc" },
+    });
+
+    // Đếm số ví đang bị khóa
+    const lockedWalletsCount = await prisma.wallets.count({
+      where: { isLocked: true },
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        ticketAlert: ticketAlert?.newData || null,
+        financialAlert: financialAlert?.newData || null,
+        lockedWalletsCount,
+      },
+    });
+  });
 }
