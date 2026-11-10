@@ -514,4 +514,107 @@ export class BookingService {
 
     return result;
   }
+  static async adminRevokeMultipleTickets(
+    ticketIds: number[],
+    adminUserId: number,
+    reason: string = "Admin thu hồi nhiều vé",
+  ) {
+    if (!ticketIds || ticketIds.length === 0)
+      throw new Error("Chưa chọn vé nào!");
+
+    const tickets = await prisma.tickets.findMany({
+      where: { id: { in: ticketIds }, status: "CONFIRMED" },
+      include: { user: true, trip: true },
+    });
+
+    if (tickets.length === 0) throw new Error("Không có vé hợp lệ để thu hồi!");
+
+    const refundByUser = new Map<number, number>();
+    tickets.forEach((t) => {
+      const amount = Number(t.paidAmount ?? t.trip.price ?? 0);
+      if (amount > 0) {
+        refundByUser.set(t.userId, (refundByUser.get(t.userId) || 0) + amount);
+      }
+    });
+
+    await prisma.$transaction(async (tx) => {
+      await tx.tickets.updateMany({
+        where: { id: { in: tickets.map((t) => t.id) } },
+        data: { status: "REVOKED_BY_ADMIN" },
+      });
+
+      for (const [userId, amount] of refundByUser.entries()) {
+        const wallet = await tx.wallets.findUnique({ where: { userId } });
+        if (wallet) {
+          const currentBalance = Number(wallet.balance);
+          await tx.wallets.update({
+            where: { userId },
+            data: { balance: { increment: amount } },
+          });
+          await tx.auditLog.create({
+            data: {
+              requestId: `BULK_REVOKE_REFUND_${Date.now()}_${userId}`,
+              userId: userId,
+              action: "REFUND_TICKET_PAYMENT",
+              batchId: `BULK_REVOKE_${Date.now()}`,
+              resource: "Wallets",
+              resourceId: String(wallet.id),
+              oldData: { balance: currentBalance },
+              newData: {
+                amount: amount,
+                description: `Hoàn tiền ${tickets.filter((t) => t.userId === userId).length} vé bị thu hồi. Lý do: ${reason}`,
+                newBalance: currentBalance + amount,
+              },
+            },
+          });
+        }
+      }
+
+      await tx.auditLog.create({
+        data: {
+          requestId: `BULK_REVOKE_${Date.now()}`,
+          userId: adminUserId,
+          action: "ADMIN_REVOKE_MULTIPLE_TICKETS",
+          resource: "Tickets",
+          resourceId: ticketIds.join(","),
+          newData: {
+            ticketIds: tickets.map((t) => t.id),
+            reason,
+            performedByAdminId: adminUserId,
+            totalTickets: tickets.length,
+          },
+        },
+      });
+    });
+
+    const ticketsByUser = new Map<number, typeof tickets>();
+    tickets.forEach((t) => {
+      const arr = ticketsByUser.get(t.userId) || [];
+      arr.push(t);
+      ticketsByUser.set(t.userId, arr);
+    });
+
+    for (const [userId, userTickets] of ticketsByUser.entries()) {
+      const email = userTickets[0].user?.email;
+      if (email) {
+        try {
+          await scheduleNotificationWithReset(
+            {
+              email,
+              type: "ADMIN_REVOKE_BATCH",
+              data: { userId, batchId: null, reason },
+            },
+            {
+              delayMs: 10000,
+              jobId: `revoke-multi-${userId}-${Date.now()}`,
+            },
+          );
+        } catch (err) {
+          console.error("Lỗi gửi mail thu hồi nhiều vé:", err);
+        }
+      }
+    }
+
+    return { success: true, count: tickets.length };
+  }
 }

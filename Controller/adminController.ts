@@ -41,6 +41,47 @@ export class AdminController {
     const result = await TicketService.scanAnomalies();
     res.status(200).json({ success: true, data: result });
   });
+  static revokeAnomalyTickets = catchAsync(
+    async (req: Request, res: Response) => {
+      const adminUserId = (req as any).user?.id || (req as any).user?.userId;
+      const { reason } = req.body;
+
+      // 1. Tự động tìm tất cả vé lỗi (giá 0đ hoặc nhỏ hơn giá gốc)
+      const anomalies: any[] = await prisma.$queryRaw`
+      SELECT t.id 
+      FROM "Tickets" t
+      JOIN "Trips" tr ON t."tripId" = tr.id
+      WHERE t.status = 'CONFIRMED' 
+        AND (t."paidAmount" IS NULL OR t."paidAmount" < tr.price OR t."paidAmount" = 0)
+    `;
+
+      if (!anomalies || anomalies.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Không tìm thấy vé lỗi nào để thu hồi!",
+        });
+      }
+
+      const ticketIds = anomalies.map((a) => a.id);
+      const finalReason = reason
+        ? String(reason).trim()
+        : "Hệ thống thu hồi vé lỗi giá 0đ";
+
+      // 2. Gọi hàm thu hồi hàng loạt (đã viết ở các bước trước)
+      // Hàm này tự động gom nhóm theo User để hoàn tiền và gửi mail
+      const result = await BookingService.adminRevokeMultipleTickets(
+        ticketIds,
+        Number(adminUserId),
+        finalReason,
+      );
+
+      res.status(200).json({
+        success: true,
+        message: `Đã tự động thu hồi thành công ${result.count} vé lỗi!`,
+        data: result,
+      });
+    },
+  );
 
   // FIX: truyền đủ 3 tham số (ticketId, adminUserId, reason)
   static revokeSingleTicket = catchAsync(

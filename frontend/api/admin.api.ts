@@ -67,4 +67,10 @@ export const adminApi = {
     const res = await axiosClient.get<any>("/admin/ai-alerts");
     return res.data;
   },
+  revokeAnomalies: async (reason: string): Promise<any> => {
+    const res = await axiosClient.post<any>("/admin/tickets/revoke-anomalies", {
+      reason,
+    });
+    return res.data;
+  },
 };

@@ -49,6 +49,18 @@ export default function TicketManagement() {
     onSettled: () => setRevokingTicketId(null),
   });
 
+  // ✅ MUTATION MỚI: Thu hồi tất cả vé lỗi
+  const revokeAnomaliesMutation = useMutation({
+    mutationFn: (reason: string) => adminApi.revokeAnomalies(reason),
+    onSuccess: (res: any) => {
+      queryClient.invalidateQueries({ queryKey: ["admin-tickets"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-ticket-alerts"] });
+      queryClient.invalidateQueries({ queryKey: ["wallet"] });
+      alert(res.message);
+    },
+    onError: (err: any) => alert(err.message || "Lỗi khi thu hồi vé lỗi"),
+  });
+
   const handleRevoke = (ticketId: number) => {
     const reason = prompt(
       "Nhập lý do thu hồi vé này (VD: Lỗi giá 0đ, Bug hệ thống...):",
@@ -56,6 +68,20 @@ export default function TicketManagement() {
     if (reason && reason.trim().length > 0) {
       setRevokingTicketId(ticketId);
       revokeMutation.mutate({ ticketId, reason: reason.trim() });
+    }
+  };
+
+  const handleRevokeAllAnomalies = () => {
+    if (
+      !confirm(
+        "Hệ thống sẽ tự động quét và thu hồi TẤT CẢ vé bị lỗi giá (0đ/sai giá) trên toàn hệ thống. Bạn có chắc chắn?",
+      )
+    )
+      return;
+
+    const reason = prompt("Nhập lý do thu hồi (VD: Lỗi hệ thống gán giá 0đ):");
+    if (reason && reason.trim().length > 0) {
+      revokeAnomaliesMutation.mutate(reason.trim());
     }
   };
 
@@ -70,13 +96,31 @@ export default function TicketManagement() {
             Hệ thống AI tự động quét bất thường mỗi 15 phút.
           </p>
         </div>
-        <button
-          onClick={() => queryClient.invalidateQueries()}
-          className="bg-white/[0.04] hover:bg-white/[0.08] p-2 rounded-xl text-sm transition"
-          title="Làm mới"
-        >
-          <RefreshCcw className="h-4 w-4 text-[#92929F]" />
-        </button>
+        <div className="flex gap-3">
+          {/* ✅ NÚT THU HỒI TẤT CẢ VÉ LỖI */}
+          <button
+            onClick={handleRevokeAllAnomalies}
+            disabled={revokeAnomaliesMutation.isPending}
+            className="bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 px-4 py-2 rounded-xl text-sm font-medium transition flex items-center gap-2 disabled:opacity-50"
+          >
+            {revokeAnomaliesMutation.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <AlertTriangle className="h-4 w-4" />
+            )}
+            {revokeAnomaliesMutation.isPending
+              ? "Đang dọn dẹp..."
+              : "Thu hồi tất cả vé lỗi"}
+          </button>
+
+          <button
+            onClick={() => queryClient.invalidateQueries()}
+            className="bg-white/[0.04] hover:bg-white/[0.08] p-2 rounded-xl text-sm transition"
+            title="Làm mới"
+          >
+            <RefreshCcw className="h-4 w-4 text-[#92929F]" />
+          </button>
+        </div>
       </div>
 
       {latestAlert && (
@@ -89,8 +133,8 @@ export default function TicketManagement() {
             {(latestAlert.newData as any)?.aiAnalysis}
           </p>
           <p className="text-xs text-rose-300 font-medium">
-            ⚠️ Vui lòng kiểm tra các vé có nền đỏ bên dưới và tiến hành thu hồi
-            nếu cần thiết.
+            Vui lòng kiểm tra các vé có nền đỏ bên dưới và tiến hành thu hồi nếu
+            cần thiết.
           </p>
         </div>
       )}
