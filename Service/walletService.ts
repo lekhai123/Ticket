@@ -42,7 +42,6 @@ export class WalletService {
         throw error;
       }
 
-      // BẢO MẬT: Chặn nạp tiền nếu ví đang bị khóa (phong tỏa)
       if (wallet.isLocked) {
         const error: any = new Error(
           "Ví này đang bị khóa do vi phạm hoặc chờ đối soát. Không thể nạp tiền!",
@@ -124,6 +123,8 @@ export class WalletService {
               "MASS_GIFT_RECEIVED",
               "MASS_GIFT_REVOKED",
               "REFUND_TICKET_PAYMENT",
+              "SYSTEM_AUTO_DEBIT_AND_FREEZE",
+              "SYSTEM_ALERT_BALANCE_MISMATCH",
             ],
           },
         },
@@ -139,6 +140,7 @@ export class WalletService {
               "REVOKE_BATCH",
               "ADMIN_ADJUST_BALANCE",
               "REFUND_TICKET_PAYMENT",
+              "SYSTEM_AUTO_DEBIT_AND_FREEZE",
             ],
           },
         },
