@@ -1,4 +1,4 @@
-import prisma from "../database/prismaClient"; // Dùng singleton Prisma
+import prisma from "../database/prismaClient";
 import { AIReconciliationAnalyzer } from "./aiReconciliationAnalyzer.service";
 
 export interface MismatchDetail {
@@ -152,6 +152,7 @@ export class ReconciliationService {
                     resourceId: wallet.id.toString(),
                     oldData: { actualBalance, isLocked: wallet.isLocked },
                     newData: {
+                      amount: -difference,
                       adjustedAmount: -difference,
                       newBalance: calculatedBalance,
                       isLocked: true,

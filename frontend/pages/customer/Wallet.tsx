@@ -6,7 +6,7 @@ import {
   ArrowUpFromLine,
   Loader2,
   CreditCard,
-  AlertTriangle, // ✅ Thêm icon cảnh báo
+  AlertTriangle,
 } from "lucide-react";
 import { useAuthStore } from "../../store/authStore";
 import { useWallet } from "../../hooks/useWallet";
@@ -23,7 +23,6 @@ export default function Wallet() {
   const [topUpAmount, setTopUpAmount] = useState("");
   const [isCreatingPayOS, setIsCreatingPayOS] = useState(false);
 
-  // ✅ Lấy trạng thái khóa ví từ object balance
   const isLocked = (balance as any)?.isLocked;
 
   const { data: txData, isLoading: isTxLoading } = useQuery({
@@ -60,8 +59,12 @@ export default function Wallet() {
     const { action, newData } = tx;
     if (tx.amount !== undefined && tx.amount !== null) return Number(tx.amount);
     if (!newData) return 0;
+
     if (newData.amount !== undefined && newData.amount !== null)
       return Number(newData.amount);
+    if (newData.adjustedAmount !== undefined && newData.adjustedAmount !== null)
+      return Number(newData.adjustedAmount);
+
     if (action === "MASS_GIFT_RECEIVED" || action === "MASS_GIFT_WALLET")
       return Number(newData.amountAdded || newData.giftAmount || 0);
     if (
@@ -70,8 +73,10 @@ export default function Wallet() {
       return -Math.abs(Number(newData.amount || 0));
     if (["CANCEL_TICKET_REFUND", "REFUND_TICKET_PAYMENT"].includes(action))
       return Number(newData.amount || newData.refundAmount || 0);
+
     return Number(
       newData.amount ??
+        newData.adjustedAmount ??
         newData.amountAdded ??
         newData.giftAmount ??
         newData.refundAmount ??
@@ -81,8 +86,15 @@ export default function Wallet() {
 
   const getDescription = (tx: any) => {
     const { action, newData, isRevoked } = tx;
+
+    if (action === "SYSTEM_AUTO_DEBIT_AND_FREEZE") {
+      const reason = newData?.reason || "Hệ thống tự động cân bằng số dư";
+      return `Hệ thống cân bằng số dư (AIOps): ${reason}`;
+    }
+
     if (newData?.description) return newData.description;
     if (tx.description) return tx.description;
+
     switch (action) {
       case "MASS_GIFT_RECEIVED":
       case "MASS_GIFT_WALLET":
@@ -107,7 +119,9 @@ export default function Wallet() {
 
   const getIsPositive = (tx: any, amountVal: number) => {
     if (tx.isRevoked) return false;
+    if (amountVal > 0) return true;
     if (amountVal < 0) return false;
+
     const positiveActions = [
       "TOP_UP",
       "CANCEL_TICKET_REFUND",
@@ -116,7 +130,7 @@ export default function Wallet() {
       "MASS_GIFT_RECEIVED",
       "MASS_GIFT_WALLET",
     ];
-    return positiveActions.includes(tx.action) || amountVal > 0;
+    return positiveActions.includes(tx.action);
   };
 
   if (!user) return null;
@@ -131,7 +145,6 @@ export default function Wallet() {
         Ví điện tử
       </h1>
 
-      {/* ✅ BANNER CẢNH BÁO KHI VÍ BỊ KHÓA */}
       {isLocked && (
         <div className="mb-6 rounded-2xl border border-rose-500/20 bg-rose-500/10 p-4 flex gap-3 text-rose-400">
           <AlertTriangle className="h-5 w-5 flex-shrink-0" />
@@ -192,14 +205,14 @@ export default function Wallet() {
               value={topUpAmount}
               onChange={(e) => setTopUpAmount(e.target.value)}
               className="mb-4 bg-[#0D0D10] border-white/[0.08] text-[#F5F5F7]"
-              disabled={isLocked} // ✅ Khóa ô nhập tiền nếu ví bị khóa
+              disabled={isLocked}
             />
 
             <Button
               type="button"
               onClick={handlePayOS}
               isLoading={isCreatingPayOS}
-              disabled={isLocked} // ✅ Khóa nút nạp tiền nếu ví bị khóa
+              disabled={isLocked}
               className={cn(
                 "w-full flex items-center justify-center gap-2",
                 isLocked
@@ -213,7 +226,6 @@ export default function Wallet() {
           </div>
         </div>
 
-        {/* Lịch sử (Giữ nguyên) */}
         <div className="lg:col-span-2 rounded-3xl border border-white/[0.08] bg-[#15151B] p-6">
           <h2 className="text-lg font-medium mb-6 text-[#F5F5F7]">
             Lịch sử giao dịch
