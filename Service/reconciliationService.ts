@@ -84,6 +84,7 @@ export class ReconciliationService {
         for (const wallet of wallets) {
           const auditLogs = logsByUser.get(wallet.userId) || [];
           let calculatedBalance = 0;
+          let hasTamperedLog = false; // Cờ đánh dấu phát hiện Hacker
 
           for (const log of auditLogs) {
             const newData = log.newData as Record<string, any> | null;
@@ -105,9 +106,10 @@ export class ReconciliationService {
 
             if (!isValidSignature) {
               console.error(
-                `[SECURITY ALERT] Phát hiện AuditLog ID ${log.id} của User ${wallet.userId} bị can thiệp trái phép! Bỏ qua log này.`,
+                `[SECURITY ALERT] Phát hiện AuditLog ID ${log.id} của User ${wallet.userId} bị can thiệp trái phép!`,
               );
-              continue; // Bỏ qua log bị làm giả, không tính vào số dư lý thuyết
+              hasTamperedLog = true; // Đánh dấu là đã có can thiệp
+              continue; // Bỏ qua không tính số tiền giả này
             }
 
             const rawAmount = newData.amount;
@@ -128,7 +130,8 @@ export class ReconciliationService {
             (actualBalance - calculatedBalance).toFixed(2),
           );
 
-          if (Math.abs(difference) > 0.001) {
+          // ĐIỀU KIỆN SỬA: Nếu lệch tiền HOẶC phát hiện sửa Log -> Đưa vào danh sách vi phạm
+          if (Math.abs(difference) > 0.001 || hasTamperedLog) {
             const isDebt = calculatedBalance < 0;
 
             mismatchedAccounts.push({
@@ -137,37 +140,25 @@ export class ReconciliationService {
               expectedBalance: calculatedBalance,
               actualBalance: actualBalance,
               difference: difference,
-              status: isDebt
-                ? "DEBT_GENERATED_AND_FROZEN"
-                : "DEBITED_AND_FROZEN",
+              status: hasTamperedLog
+                ? "DEBITED_AND_FROZEN"
+                : isDebt
+                  ? "DEBT_GENERATED_AND_FROZEN"
+                  : "DEBITED_AND_FROZEN",
             });
 
             try {
               await prisma.$transaction(async (tx) => {
+                // Khóa ví ngay lập tức
                 await tx.wallets.update({
                   where: { id: wallet.id },
                   data: { balance: calculatedBalance, isLocked: true },
                 });
 
-                const lastLog = auditLogs[auditLogs.length - 1];
-                if (lastLog?.ipAddress && lastLog.ipAddress !== "127.0.0.1") {
-                  await tx.blacklistedIPs.upsert({
-                    where: { ipAddress: lastLog.ipAddress },
-                    update: {
-                      isResolved: false,
-                      reason: `Chênh lệch tài chính Ví #${wallet.id}`,
-                    },
-                    create: {
-                      ipAddress: lastLog.ipAddress,
-                      userId: wallet.userId,
-                      reason: `Cảnh báo đối soát: Số dư thực tế ${actualBalance}đ vs Lý thuyết ${calculatedBalance}đ`,
-                    },
-                  });
-                }
-
+                // Ghi log AIOps cảnh báo
                 await tx.auditLog.create({
                   data: {
-                    requestId: `AIOPS-RECON-${Date.now()}-${wallet.id}`,
+                    requestId: `AIOPS-SECURITY-${Date.now()}-${wallet.id}`,
                     userId: wallet.userId,
                     action: "SYSTEM_AUTO_DEBIT_AND_FREEZE",
                     batchId: reconBatchId,
@@ -180,15 +171,14 @@ export class ReconciliationService {
                       newBalance: calculatedBalance,
                       isLocked: true,
                       isDebt: isDebt,
-                      reason: isDebt
-                        ? "Khấu trừ khoản tiền không hợp lệ đã tiêu xài -> Ví ghi nợ âm & Khóa ví"
+                      reason: hasTamperedLog
+                        ? "Phát hiện can thiệp trái phép vào lịch sử giao dịch (AuditLog bị sửa) -> Khóa ví bảo vệ!"
                         : "Cân bằng lại số dư chuẩn & Khóa ví chờ Admin duyệt",
                     },
                     ipAddress: "127.0.0.1 (CRON_AIOPS)",
                   },
                 });
               });
-
               if (wallet.user?.email) {
                 await sendNotificationEmail({
                   email: wallet.user.email,
