@@ -15,6 +15,10 @@ export const adminApi = {
   runReconciliation: async (): Promise<ApiResponse<any>> => {
     const res = await axiosClient.post<ApiResponse<any>>(
       "/admin/reconciliation/trigger",
+      {}, // Tham số body (để trống)
+      {
+        timeout: 60000, // ✅ Cho phép chờ tối đa 60 giây
+      },
     );
     return res.data;
   },

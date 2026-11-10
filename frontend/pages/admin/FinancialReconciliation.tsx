@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import axiosClient from "../../api/axiosClient";
 import {
   ShieldCheck,
@@ -51,6 +51,7 @@ interface AuditLogItem {
 
 export const FinancialReconciliation: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(false);
+  const [loadingStep, setLoadingStep] = useState<"DB" | "AI" | null>(null);
   const [report, setReport] = useState<ReconciliationReport | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -59,12 +60,29 @@ export const FinancialReconciliation: React.FC = () => {
   const [loadingLogs, setLoadingLogs] = useState<boolean>(false);
   const [unlockingUserId, setUnlockingUserId] = useState<number | null>(null);
 
+  // Hiệu ứng chuyển trạng thái loading từ DB sang AI để người dùng đỡ sốt ruột
+  useEffect(() => {
+    let timer: any;
+    if (loading) {
+      setLoadingStep("DB");
+      timer = setTimeout(() => {
+        setLoadingStep("AI");
+      }, 2000); // Sau 2s (giai đoạn DB thường nhanh), chuyển sang trạng thái chờ AI
+    } else {
+      setLoadingStep(null);
+    }
+    return () => clearTimeout(timer);
+  }, [loading]);
+
   const handleTriggerReconciliation = async () => {
     setLoading(true);
     setError(null);
+    setReport(null); // Xóa kết quả cũ để hiển thị Skeleton
     try {
       const response = await axiosClient.post<{ data: ReconciliationReport }>(
         "/admin/reconciliation/trigger",
+        {},
+        { timeout: 60000 }, // Chờ tối đa 60s cho AI phân tích
       );
       setReport(response.data.data);
     } catch (err: any) {
@@ -128,10 +146,14 @@ export const FinancialReconciliation: React.FC = () => {
         <button
           onClick={handleTriggerReconciliation}
           disabled={loading}
-          className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-[#8B5CF6] hover:bg-[#7C3AED] disabled:opacity-50 text-white text-sm font-medium rounded-xl transition-all shadow-[0_0_15px_rgba(139,92,246,0.3)]"
+          className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-[#8B5CF6] hover:bg-[#7C3AED] disabled:opacity-50 text-white text-sm font-medium rounded-xl transition-all shadow-[0_0_15px_rgba(139,92,246,0.3)] min-w-[180px]"
         >
           <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
-          {loading ? "Đang đối soát..." : "Chạy Đối Soát Ngay"}
+          {loading
+            ? loadingStep === "DB"
+              ? "Đang quét dữ liệu..."
+              : "AI đang phân tích..."
+            : "Chạy Đối Soát Ngay"}
         </button>
       </div>
 
@@ -139,6 +161,26 @@ export const FinancialReconciliation: React.FC = () => {
       {error && (
         <div className="p-4 bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-xl text-sm">
           {error}
+        </div>
+      )}
+
+      {/* SKELETON LOADING KHI CHƯA CÓ REPORT */}
+      {loading && !report && (
+        <div className="space-y-6 animate-pulse">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            {[1, 2, 3].map((i) => (
+              <div
+                key={i}
+                className="h-28 bg-[#15151B] rounded-2xl border border-white/[0.08]"
+              ></div>
+            ))}
+          </div>
+          <div className="h-48 bg-[#15151B] rounded-2xl border border-white/[0.08] flex items-center justify-center">
+            <div className="text-[#92929F] flex flex-col items-center gap-3">
+              <Bot className="w-8 h-8 text-[#8B5CF6] animate-bounce" />
+              <p>Hệ thống đang đối soát và nhờ AI phân tích...</p>
+            </div>
+          </div>
         </div>
       )}
 
@@ -225,52 +267,78 @@ export const FinancialReconciliation: React.FC = () => {
       )}
 
       {/* AI SENTINEL CARD */}
-      {report?.aiAnalysis && (
-        <div className="p-5 bg-gradient-to-r from-[#15151B] to-[#1a1a24] rounded-2xl border border-[#8B5CF6]/30 shadow-lg space-y-4">
-          <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
-            <div className="flex items-center gap-2">
-              <div className="p-1.5 bg-[#8B5CF6]/20 border border-[#8B5CF6]/40 rounded-lg">
-                <Bot className="w-5 h-5 text-[#8B5CF6]" />
+      {report && (
+        <>
+          {loadingStep === "AI" && !report.aiAnalysis ? (
+            // TRẠNG THÁI ĐANG CHỜ AI
+            <div className="p-5 bg-gradient-to-r from-[#15151B] to-[#1a1a24] rounded-2xl border border-[#8B5CF6]/30 shadow-lg space-y-4">
+              <div className="flex items-center gap-2 border-b border-white/[0.08] pb-3">
+                <div className="p-1.5 bg-[#8B5CF6]/20 border border-[#8B5CF6]/40 rounded-lg">
+                  <Bot className="w-5 h-5 text-[#8B5CF6] animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-[#F5F5F7]">
+                    Gemini AIOps Sentinel
+                  </h3>
+                  <p className="text-[10px] text-[#8B5CF6]">
+                    Đang phân tích dữ liệu (có thể mất 15-20s)...
+                  </p>
+                </div>
               </div>
-              <div>
-                <h3 className="font-semibold text-[#F5F5F7]">
-                  Gemini AIOps Sentinel
-                </h3>
-                <p className="text-[10px] text-[#92929F]">
-                  Chẩn đoán nguyên nhân gốc gây sự cố tài chính
-                </p>
+              <div className="space-y-2 animate-pulse">
+                <div className="h-4 bg-white/[0.04] rounded w-3/4"></div>
+                <div className="h-4 bg-white/[0.04] rounded w-1/2"></div>
               </div>
             </div>
-            <span
-              className={cn(
-                "px-2.5 py-1 text-xs font-bold rounded-full tracking-wide uppercase border",
-                ["CRITICAL", "HIGH"].includes(report.aiAnalysis.riskLevel)
-                  ? "bg-rose-500/10 text-rose-400 border-rose-500/20"
-                  : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
-              )}
-            >
-              Rủi ro: {report.aiAnalysis.riskLevel}
-            </span>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-            <div className="bg-[#0D0D10]/50 p-4 rounded-xl border border-white/[0.04]">
-              <p className="text-[#8B5CF6] font-medium mb-1">
-                🔍 Nguyên nhân gốc (Root Cause):
-              </p>
-              <p className="text-[#92929F] leading-relaxed">
-                {report.aiAnalysis.rootCauseAnalysis}
-              </p>
+          ) : report?.aiAnalysis ? (
+            // AI ĐÃ PHÂN TÍCH XONG
+            <div className="p-5 bg-gradient-to-r from-[#15151B] to-[#1a1a24] rounded-2xl border border-[#8B5CF6]/30 shadow-lg space-y-4">
+              <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 bg-[#8B5CF6]/20 border border-[#8B5CF6]/40 rounded-lg">
+                    <Bot className="w-5 h-5 text-[#8B5CF6]" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-[#F5F5F7]">
+                      Gemini AIOps Sentinel
+                    </h3>
+                    <p className="text-[10px] text-[#92929F]">
+                      Chẩn đoán nguyên nhân gốc gây sự cố tài chính
+                    </p>
+                  </div>
+                </div>
+                <span
+                  className={cn(
+                    "px-2.5 py-1 text-xs font-bold rounded-full tracking-wide uppercase border",
+                    ["CRITICAL", "HIGH"].includes(report.aiAnalysis.riskLevel)
+                      ? "bg-rose-500/10 text-rose-400 border-rose-500/20"
+                      : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+                  )}
+                >
+                  Rủi ro: {report.aiAnalysis.riskLevel}
+                </span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                <div className="bg-[#0D0D10]/50 p-4 rounded-xl border border-white/[0.04]">
+                  <p className="text-[#8B5CF6] font-medium mb-1">
+                    🔍 Nguyên nhân gốc (Root Cause):
+                  </p>
+                  <p className="text-[#92929F] leading-relaxed">
+                    {report.aiAnalysis.rootCauseAnalysis}
+                  </p>
+                </div>
+                <div className="bg-[#0D0D10]/50 p-4 rounded-xl border border-white/[0.04]">
+                  <p className="text-emerald-400 font-medium mb-1">
+                    🛠️ Khuyến nghị (Recommended Action):
+                  </p>
+                  <p className="text-[#92929F] leading-relaxed">
+                    {report.aiAnalysis.recommendedAction}
+                  </p>
+                </div>
+              </div>
             </div>
-            <div className="bg-[#0D0D10]/50 p-4 rounded-xl border border-white/[0.04]">
-              <p className="text-emerald-400 font-medium mb-1">
-                🛠️ Khuyến nghị (Recommended Action):
-              </p>
-              <p className="text-[#92929F] leading-relaxed">
-                {report.aiAnalysis.recommendedAction}
-              </p>
-            </div>
-          </div>
-        </div>
+          ) : null}
+        </>
       )}
 
       {/* MISMATCHES TABLE */}
