@@ -13,7 +13,7 @@
     "build": "tsup server.ts queues/mailWorker.ts --out-dir dist-api --format esm --no-splitting",
     "build:be": "tsup server.ts queues/mailWorker.ts --out-dir dist-api --format esm --no-splitting",
     "vercel-build": "prisma generate && cd frontend && npm install && npm run build",
-    "check-local": "npx prisma generate && npx tsc --noEmit && npm run test"
+    "check-local": "npx prisma generate && npx tsc --noEmit && npm run test && cd frontend && npm run build"
   },
   "dependencies": {
     "@google/genai": "^2.12.0",
