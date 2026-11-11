@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import {
   Database,
   Server,
@@ -10,15 +10,56 @@ import {
   Cloud,
   CheckCircle2,
   XCircle,
+  ShieldAlert,
+  ShieldCheck,
+  Loader2,
 } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSystemHealth } from "../../hooks/useAdminStats";
+import { adminApi } from "../../api/admin.api"; // ✅ Import API
 import { cn } from "../../utils/cn";
 
 export default function Health() {
+  const queryClient = useQueryClient();
   const { data: rawData, isLoading } = useSystemHealth();
   const healthData = (rawData as any)?.data || rawData;
 
-  if (isLoading)
+  // Lấy trạng thái bảo trì
+  const { data: maintenanceRes } = useQuery({
+    queryKey: ["maintenance-status"],
+    queryFn: () => adminApi.getMaintenanceStatus(),
+    refetchInterval: 30000, // Tự động cập nhật mỗi 30s
+  });
+
+  const isMaintenance = maintenanceRes?.data?.isMaintenance || false;
+
+  // Mutation Bật/Tắt bảo trì
+  const toggleMutation = useMutation({
+    mutationFn: (enable: boolean) => adminApi.toggleMaintenance(enable),
+    onSuccess: (res) => {
+      alert(res.message);
+      queryClient.invalidateQueries({ queryKey: ["maintenance-status"] });
+    },
+    onError: () => alert("Lỗi khi thay đổi trạng thái bảo trì!"),
+  });
+
+  const handleToggle = () => {
+    if (isMaintenance) {
+      if (confirm("Hệ thống sẽ MỞ CỬA trở lại. Bạn chắc chắn chưa?")) {
+        toggleMutation.mutate(false);
+      }
+    } else {
+      if (
+        confirm(
+          "🚨 CẢNH BÁO: Mọi giao dịch mua vé/nạp tiền sẽ bị CHẶN. Bạn có chắc chắn muốn BẬT BẢO TRÌ?",
+        )
+      ) {
+        toggleMutation.mutate(true);
+      }
+    }
+  };
+
+  if (isLoading) {
     return (
       <div className="p-6 space-y-4 animate-pulse">
         <div className="h-8 w-48 bg-white/[0.04] rounded-lg" />
@@ -29,6 +70,7 @@ export default function Health() {
         </div>
       </div>
     );
+  }
 
   const server = healthData?.server || {};
   const database = healthData?.database || {};
@@ -53,6 +95,66 @@ export default function Health() {
 
   return (
     <div className="space-y-6">
+      {/* ✅ BANNER ĐIỀU KHIỂN BẢO TRÌ */}
+      <div
+        className={cn(
+          "rounded-2xl border p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 transition-all",
+          isMaintenance
+            ? "bg-rose-500/10 border-rose-500/30 shadow-[0_0_20px_rgba(244,63,94,0.15)]"
+            : "bg-emerald-500/5 border-emerald-500/20",
+        )}
+      >
+        <div className="flex items-center gap-4">
+          <div
+            className={cn(
+              "p-3 rounded-full",
+              isMaintenance
+                ? "bg-rose-500/20 text-rose-400 animate-pulse"
+                : "bg-emerald-500/20 text-emerald-400",
+            )}
+          >
+            {isMaintenance ? (
+              <ShieldAlert className="h-6 w-6" />
+            ) : (
+              <ShieldCheck className="h-6 w-6" />
+            )}
+          </div>
+          <div>
+            <h3
+              className={cn(
+                "font-semibold text-base",
+                isMaintenance ? "text-rose-400" : "text-emerald-400",
+              )}
+            >
+              {isMaintenance
+                ? "HỆ THỐNG ĐANG BẢO TRÌ"
+                : "Hệ thống đang hoạt động bình thường"}
+            </h3>
+            <p className="text-xs text-[#92929F] mt-1 max-w-lg">
+              {isMaintenance
+                ? "Mọi giao dịch mua vé và thanh toán mới đều bị chặn. (Webhook PayOS vẫn hoạt động để cộng tiền nếu khách đã lỡ chuyển khoản)."
+                : "Bật chế độ bảo trì khẩn cấp sẽ ngăn chặn mọi giao dịch mới. Bạn nên bật trước khi nâng cấp Database/PayOS để tránh lỗi."}
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={handleToggle}
+          disabled={toggleMutation.isPending}
+          className={cn(
+            "px-5 py-2.5 rounded-xl font-medium text-sm transition-all flex items-center gap-2 w-full md:w-auto justify-center",
+            isMaintenance
+              ? "bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg"
+              : "bg-rose-500 hover:bg-rose-600 text-white shadow-lg",
+          )}
+        >
+          {toggleMutation.isPending && (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          )}
+          {isMaintenance ? "Mở Cửa Lại (Tắt)" : "Bật Bảo Trì Khẩn Cấp"}
+        </button>
+      </div>
+
+      {/* (Phần hiển thị trạng thái Server bên dưới giữ nguyên) */}
       <div className="flex items-center justify-between border-b border-white/[0.08] pb-5">
         <div>
           <h1 className="text-xl font-semibold tracking-tight text-[#F5F5F7]">
@@ -157,7 +259,7 @@ export default function Health() {
 
         <HealthCard
           title="Gemini AI Engine"
-          subtitle={gemini.model || "gemini-2.5-flash"}
+          subtitle={gemini.model || "gemini-3.8-flash"}
           icon={Sparkles}
           status="HEALTHY"
         >

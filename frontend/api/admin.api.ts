@@ -82,4 +82,15 @@ export const adminApi = {
     const res = await axiosClient.get<any>("/admin/system-alerts");
     return res.data;
   },
+  getMaintenanceStatus: async (): Promise<any> => {
+    const res = await axiosClient.get<any>("/admin/maintenance/status");
+    return res.data;
+  },
+
+  toggleMaintenance: async (enable: boolean): Promise<any> => {
+    const res = await axiosClient.post<any>("/admin/maintenance/toggle", {
+      enable,
+    });
+    return res.data;
+  },
 };
