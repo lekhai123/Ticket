@@ -73,12 +73,7 @@ describe("Kiểm thử AIOps - Đối soát tài chính", () => {
   });
 
   it("Phải phát hiện sai lệch, khóa ví và trừ tiền ảo", async () => {
-    // ✅ MOCK CHỮ KÝ LUÔN HỢP LỆ (Để test tập trung vào logic đối soát số dư, không bị vướng lỗi thiếu signature)
-    jest.spyOn(AuditSigner, "verifySignature").mockReturnValue(true);
-
     await ReconciliationService.runDailyReconciliation();
-
-    // ✅ Xóa bỏ đoạn tạo ví bù, test trung thực 100%
     const finalWallet = await prisma.wallets.findUnique({
       where: { userId: hackerUserId },
     });

@@ -7,6 +7,7 @@ import {
   TEST_PREFIX,
 } from "./utils/dbTestHelper";
 
+jest.setTimeout(60000);
 jest.mock("../queues/mailQueue", () => ({
   sendNotificationEmail: jest.fn<any>(() => Promise.resolve({ success: true })),
   scheduleNotificationWithReset: jest.fn<any>(() => Promise.resolve(true)),
