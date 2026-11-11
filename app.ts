@@ -1,10 +1,12 @@
 import express from "express";
 import cookieParser from "cookie-parser";
 import cors from "cors";
+import helmet from "helmet";
 import { ENV, isVercel } from "./config/env";
 
 import { distributedTracing } from "./Middleware/tracingMiddleware";
 import { globalErrorHandler } from "./Middleware/errorMiddleware";
+import { checkMaintenance } from "./Middleware/maintenanceMiddleware";
 
 import otpRoutes from "./Router/otpRoutes";
 import tripRoutes from "./Router/tripRoute";
@@ -14,15 +16,16 @@ import adminRoutes from "./Router/adminRoutes";
 import authRoutes from "./Router/authRoutes";
 import bookingRoutes from "./Router/bookingRoutes";
 import paymentRoutes from "./Router/paymentRoutes";
-import { initTicketAuditorCron } from "./jobs/ticketAuditorJob";
 
 const app = express();
 
-// Cấu hình CORS
+// Bảo mật với Helmet
+app.use(helmet());
+app.disable("x-powered-by");
+
 const allowedOrigins = ["http://localhost:5173", ENV.FRONTEND_URL].filter(
   Boolean,
 );
-
 app.use(
   cors({
     origin: (origin, callback) => {
@@ -51,8 +54,10 @@ app.use(
 
 app.use(express.json());
 app.use(cookieParser());
-
 app.use(distributedTracing);
+
+// Áp dụng Bảo trì cho TẤT CẢ các route phía dưới
+app.use(checkMaintenance);
 
 // Khai báo Routes
 app.use("/api/otp", otpRoutes);
@@ -64,7 +69,6 @@ app.use("/api/auth", authRoutes);
 app.use("/api/bookings", bookingRoutes);
 app.use("/api/payments", paymentRoutes);
 
-// Middleware xử lý lỗi tập trung (phải đặt cuối cùng)
 app.use(globalErrorHandler);
 
 export default app;

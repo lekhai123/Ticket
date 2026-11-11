@@ -73,6 +73,9 @@ router.use(authenticateToken, requireAdmin);
 
 router.use(rateLimit(200, 60));
 
+router.get("/maintenance/status", AdminController.getMaintenanceStatus);
+router.post("/maintenance/toggle", AdminController.toggleMaintenance);
+
 router.get(
   "/dashboard-stats",
   validate(getStatsSchema),
