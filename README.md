@@ -355,7 +355,7 @@ Nếu có sửa file `schema.prisma` và tạo migration mới:
 - **Trình duyệt hỗ trợ Passkeys:** Trên iOS, khuyên dùng Safari hoặc Brave để tránh lỗi API WebAuthn của Chrome.
 - **Không hỗ trợ trả sau:** Hệ thống đã loại bỏ hoàn toàn tính năng "Đặt vé trả sau" (`LATER`) để chống chiếm ghế ảo. Bắt buộc thanh toán 100% qua Ví (`WALLET`).
 - **Định hướng mở rộng (Logistics & Cargo):** Module mã hóa AES-256-GCM được thiết kế theo hướng "Extensibility by Default" (mở rộng mà không làm gián đoạn hệ thống). Các trường PII (như số điện thoại liên hệ nhận hàng/giao hàng) khi được kích hoạt ở các pha nâng cấp tiếp theo sẽ tự động được mã hóa ở tầng ứng dụng trước khi ghi xuống cơ sở dữ liệu.
-- **Kiến trúc Microservices-ready:** Hệ thống đã được quy hoạch biến môi trường `AI_SERVICE_URL` và tách biệt cấu trúc gọi hàm AI Proxy. Trong các giai đoạn phát triển tiếp theo, module AI Dynamic Pricing (FastAPI/Python) có thể được triển khai độc lập dưới dạng một Microservice mà không làm ảnh hưởng đến luồng xử lý chính của Backend Node.js.
+- **Kiến trúc Hybrid (Modular Monolith + AI Service độc lập)**: Lõi hệ thống (Booking, Wallet, Auth) được thiết kế theo mô hình Modular Monolith với các Domain Service tách biệt. Riêng module AI Dynamic Pricing (FastAPI/Python) được triển khai độc lập dưới dạng một Adjunct Microservice (Dịch vụ vệ tinh) giao tiếp qua HTTP. Kiến trúc này tối ưu hóa việc sử dụng đa ngôn ngữ (Polyglot) mà không gây ra sự phức tạp của hệ thống Microservices phân tán (như quản lý Distributed Transaction hay Database-per-service)
 
 ---
 
