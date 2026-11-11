@@ -1,5 +1,8 @@
 import app from "./app";
 import { ENV, isVercel } from "./config/env";
+import prisma from "./database/prismaClient";
+import { redisPrimary } from "./Utils/redisLock";
+import { mailWorker } from "./queues/mailWorker"; // ✅ SỬA: Import Worker thật
 
 // Hàm khởi động các tác vụ chạy ngầm (Chỉ chạy ở Local/VPS)
 async function startBackgroundJobs() {
@@ -10,12 +13,15 @@ async function startBackgroundJobs() {
 
   console.log("Môi trường Local/VPS: Đang khởi động Worker và Cron Job...");
 
-  // Dynamic Import để tránh lỗi treo kết nối Redis trên Vercel
   const { initReconciliationCron } = await import("./jobs/reconciliationJob");
-  initReconciliationCron();
+  const { initAnalyticsCron } = await import("./jobs/analyticsJob");
+  const { initTicketAuditorCron } = await import("./jobs/ticketAuditorJob");
 
-  await import("./queues/mailQueue");
-  console.log("Mail Worker đã khởi động và đang chờ Job.");
+  initReconciliationCron();
+  initAnalyticsCron();
+  initTicketAuditorCron();
+
+  console.log("Mail Worker và 3 Cron Jobs đã khởi động cùng Server!");
 }
 
 // Khởi chạy Server
@@ -24,9 +30,24 @@ async function bootstrap() {
 
   if (!isVercel) {
     const PORT = ENV.PORT;
-    app.listen(PORT, () => {
+    const server = app.listen(PORT, () => {
       console.log(`Server is running at http://localhost:${PORT}`);
     });
+
+    // Thêm Graceful Shutdown (Bắt tín hiệu tắt máy để đóng kết nối an toàn)
+    const shutdown = async () => {
+      console.log("Đang tắt server an toàn...");
+      server.close(async () => {
+        await prisma.$disconnect();
+        await redisPrimary.quit();
+        await mailWorker.close();
+        console.log("Đã đóng tất cả kết nối!");
+        process.exit(0);
+      });
+    };
+
+    process.on("SIGTERM", shutdown);
+    process.on("SIGINT", shutdown);
   }
 }
 

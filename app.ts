@@ -19,22 +19,21 @@ import paymentRoutes from "./Router/paymentRoutes";
 
 const app = express();
 
-// Bảo mật với Helmet
+// Thêm trust proxy để chống Hacker fake IP qua X-Forwarded-For
+app.set("trust proxy", 1);
+
 app.use(helmet());
 app.disable("x-powered-by");
 
 const allowedOrigins = ["http://localhost:5173", ENV.FRONTEND_URL].filter(
   Boolean,
 );
+
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (
-        !origin ||
-        (origin && origin.endsWith(".vercel.app")) ||
-        allowedOrigins.includes(origin) ||
-        !isVercel
-      ) {
+      // Chỉ cho phép đúng domain trong mảng, bỏ qua các domain *.vercel.app khác
+      if (!origin || allowedOrigins.includes(origin)) {
         return callback(null, true);
       }
       return callback(new Error("Not allowed by CORS"));
@@ -56,10 +55,8 @@ app.use(express.json());
 app.use(cookieParser());
 app.use(distributedTracing);
 
-// Áp dụng Bảo trì cho TẤT CẢ các route phía dưới
 app.use(checkMaintenance);
 
-// Khai báo Routes
 app.use("/api/otp", otpRoutes);
 app.use("/api/trips", tripRoutes);
 app.use("/api/users", userRoutes);

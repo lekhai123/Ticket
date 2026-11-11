@@ -1,7 +1,5 @@
 import type { Request, Response, NextFunction } from "express";
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
+import prisma from "../database/prismaClient";
 
 export const checkWalletLock = async (
   req: Request,
