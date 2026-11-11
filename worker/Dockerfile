@@ -29,5 +29,5 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist-api ./dist-api
 COPY --from=builder /app/prisma ./prisma
 
-# ✅ SỬA Ở ĐÂY: Lệnh CMD cũng phải trỏ đúng vào dist-api
+# Lệnh CMD cũng phải trỏ đúng vào dist-api
 CMD ["node", "dist-api/queues/mailWorker.mjs"]
