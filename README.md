@@ -35,19 +35,19 @@ Hệ thống được tổ chức theo luồng: **Client → API Gateway → Dom
    ┌─────────┼──────────┬──────────┬──────────┬─────────┐
    ▼         ▼          ▼          ▼          ▼         ▼
 [Auth]    [Trips]   [Booking]   [Payments] [Wallets]  [Admin]
-(Pipeline Middleware: Auth JWT, Idempotency, IP Guard, Zod Validator, Rate Limit, Maintenance)
+(Pipeline Middleware: Auth JWT, Idempotency (SET NX), IP Guard, Zod Validator, Rate Limit, Maintenance)
              │
              ▼
 ════════════════════════ DOMAIN SERVICES ═══════════════════════
    ├── AuthService (Passkeys + JWT Rotation + Revocation)
    ├── OtpService (BullMQ / Resend Worker)
    ├── TripService (Hybrid Search: Text + Gemini Vector)
-   ├── BookingService (Bulk Booking + Redis Lock + DB Lock)
-   ├── PaymentService (PayOS Integration & Webhook HMAC Verify)
+   ├── BookingService (Per-seat Lock + DB Lock + Chống Double Refund)
+   ├── PaymentService (PayOS Integration + Webhook Idempotency)
    ├── WalletService (Debt/Balance Guard & isLocked Check)
    ├── AI Proxy Service (Gemini Multi-Key Failover + Circuit Breaker)
    ├── TicketService (AI Anomaly Detection Scan)
-   └── ReconciliationService (Auto-Balancing & Audit Logs)
+   └── ReconciliationService (Auto-Balancing & HMAC Audit Logs)
              │
              ▼
 ══════════════════════ OPERATIONS & STATE ══════════════════════
@@ -75,35 +75,38 @@ Hệ thống được tổ chức theo luồng: **Client → API Gateway → Dom
 ### 2.3. Bảo Vệ Dòng Tiền & Khóa Ví Tự Động (AIOps)
 
 - **Khóa ví tự động:** Module Đối soát (Cron) tự động quét DB, nếu phát hiện số dư lệch so với Lịch sử (AuditLog) sẽ lập tức gán cờ `isLocked = true` và ghi log cảnh báo.
-- **Chặn giao dịch:** Mọi API Mua vé và Nạp tiền đều bắt buộc kiểm tra `isLocked`. Nếu ví bị khóa, trả về lỗi `403 Forbidden`.
+- **Chặn giao dịch:** Mọi API Mua vé (bắt buộc thanh toán qua WALLET, không hỗ trợ trả sau LATER) và Nạp tiền đều bắt buộc kiểm tra `isLocked`. Nếu ví bị khóa, trả về lỗi `403 Forbidden`.
 
 ### 2.4. Toàn Vẹn Dữ Liệu (HMAC Audit Logs)
 
 - Bảng `AuditLog` được bảo vệ bằng **chữ ký số HMAC-SHA256**. Nếu có bất kỳ ai (kể cả Admin) can thiệp sửa đổi số tiền trong DB, chữ ký sẽ không còn khớp, hệ thống AIOps sẽ phát hiện và đưa ra cảnh báo đỏ.
 
-### 2.5. Bảo Mật Header với Helmet
+### 2.5. Bảo Mật API & Header
 
-- Tích hợp `helmet` để giấu header `X-Powered-By`, chặn các lỗ hổng XSS cơ bản và bảo vệ thông tin máy chủ khỏi các cuộc tấn công dò quét.
+- Tích hợp `helmet` giấu header `X-Powered-By`.
+- Cấu hình `trust proxy` chống Spoofing IP.
+- Siết chặt CORS chỉ cho phép đúng domain Frontend.
+- Middleware `Idempotency` sử dụng `SET NX EX 60` của Redis để chống TOCTOU (gửi 2 request nạp tiền cùng lúc).
+- Bảo vệ API Cron bằng `CRON_SECRET` (chống lỗi `Bearer undefined`).
 
 ---
 
 ## ⚡ 3. Các Tính Năng Kỹ Thuật Cốt Lõi
 
 - **High Availability:** Dual Redis Cluster tự động chuyển vùng (Failover) khi Primary gặp sự cố.
-- **Multi-Level Cache:** Kết hợp LRU Cache (L1 - RAM) và Redis (L2) giúp truy vấn danh mục chuyến xe với độ trễ cực thấp.
-- **Chống Race Condition:** Sử dụng **Redis Distributed Lock** kết hợp **Postgres Advisory Lock** trong `prisma.$transaction` đảm bảo không xảy ra tình trạng overselling (bán trùng ghế).
-- **Tìm kiếm AI (Hybrid Search):** Kết hợp tìm kiếm từ khóa (ILIKE) và tìm kiếm ngữ nghĩa (Gemini Vector) với cơ chế Fallback thông minh (tự động bỏ lọc thời gian nếu không có kết quả).
+- **Multi-Level Cache:** Kết hợp LRU Cache (L1 - RAM) và Redis (L2). Tự động Invalidate chuẩn xác các key phân trang (`trips:all:active*`).
+- **Chống Race Condition:** Sử dụng **Redis Distributed Lock** kết hợp **Postgres Advisory Lock** khóa theo **TỪNG GHẾ** (Per-seat Lock). Sắp xếp thứ tự ghế để chống Deadlock. Chống Double Refund bằng atomic conditional update (`updateMany`).
+- **Tìm kiếm AI (Hybrid Search):** Kết hợp tìm kiếm từ khóa (ILIKE) và tìm kiếm ngữ nghĩa (Gemini Vector) với cơ chế Fallback thông minh.
 
 ### 3.5. Cầu Dao Điện (Circuit Breaker) & Chịu Lỗi
 
-- **Circuit Breaker (Opossum):** Tích hợp cho các dịch vụ bên thứ 3 (Gemini AI, PayOS). Nếu dịch vụ sập liên tục (lỗi 503), mạch sẽ ngắt (Open) và trả về Fallback ngay lập tức (0ms) thay vì bắt khách hàng chờ 20s. Sau 1 phút, mạch tự động đóng lại (Half-Open) để thử kết nối.
-- **Graceful Degradation:** Nếu AI sập, tính năng tìm kiếm tự động chuyển về tìm kiếm Text (ILIKE) cơ bản. Nếu Webhook PayOS đến muộn, hệ thống vẫn xử lý Idempotency (chống cộng tiền 2 lần).
+- **Circuit Breaker (Opossum):** Tích hợp cho các dịch vụ bên thứ 3 (Gemini AI, PayOS). Nếu dịch vụ sập liên tục (lỗi 503), mạch sẽ ngắt (Open) và trả về Fallback ngay lập tức (0ms).
+- **Graceful Degradation:** Nếu AI sập, tính năng tìm kiếm tự động chuyển về tìm kiếm Text (ILIKE) cơ bản.
 
 ### 3.6. Chế Độ Bảo Trì Khẩn Cấp (Emergency Maintenance)
 
 - Admin có thể bật/tắt chế độ bảo trì 1-Click từ trang **System Health**.
-- Khi bật, hệ thống lập tức chặn mọi API Mua vé/Nạp tiền (trả về lỗi 503) để đảm bảo an toàn dữ liệu trong lúc nâng cấp Database.
-- **Đặc biệt:** Webhook PayOS vẫn được xuyên qua để cộng tiền nếu khách đã lỡ chuyển khoản.
+- Khi bật, hệ thống lập tức chặn mọi API Mua vé/Nạp tiền (trả về lỗi 503). Riêng Webhook PayOS vẫn được xuyên qua để cộng tiền nếu khách đã lỡ chuyển khoản.
 
 ---
 
@@ -124,9 +127,7 @@ Dự án áp dụng chiến lược kiểm thử đa tầng (Unit, Integration, 
 **1. Chạy Unit & Integration Test (Jest):**
 
 ```bash
-# Ép chạy tuần tự để tránh xung đột DB
 npm run test
-# Xem báo cáo độ phủ (Coverage)
 npm run test:coverage
 ```
 
@@ -156,8 +157,6 @@ Hệ thống đạt kết quả **100% Pass**. Các phân hệ quan trọng đ�
 | **Middleware/** (Phân quyền)  |    61.11%    |   37.34%   |   59.09%    |   59.73%   |
 | **Tổng quan dự án**           |  **37.64%**  | **20.19%** | **26.13%**  | **38.09%** |
 
-_(Ghi chú: Độ phủ tổng quan 37.64% do kiến trúc dự án bao gồm nhiều module phụ trợ (AI Proxy, Cloudinary, Webhook). Các module cốt lõi về Bảo mật, Routing và Đặt vé đều đạt độ phủ rất cao >80%)._
-
 ### 4.4. Kết Quả Load Test (k6 - Production Vercel)
 
 Hệ thống đã được kiểm thử tải trực tiếp trên môi trường Production (Vercel Serverless) với **50 Virtual Users (CCU)** liên tục trong 1 phút 40 giây.
@@ -165,7 +164,7 @@ Hệ thống đã được kiểm thử tải trực tiếp trên môi trường
 - **Tỷ lệ lỗi Server (500):** `0.00%` (Hệ thống hoàn toàn không bị sập).
 - **Thời gian phản hồi (p95):** `1.26s` (Đạt chuẩn).
 - **Tổng số request xử lý:** `2017 requests` (~19 req/s).
-- **Điểm sáng:** Cơ chế **Redis Distributed Lock** đã chặn đứng thành công **1007 requests** mua trùng ghế (báo lỗi 400/409), chỉ cho phép đúng **1 request** mua thành công.
+- **Điểm sáng:** Cơ chế **Redis Distributed Lock** đã chặn đứng thành công **1007 requests** mua trùng ghế, chỉ cho phép đúng **1 request** mua thành công.
 
 ---
 
@@ -300,33 +299,31 @@ Vì gói Hobby của Vercel giới hạn Cron Job 1 lần/ngày, hệ thống s�
 
 ## 🛡️ 8. Quy Trình Pre-flight (Đảm bảo Deploy 100% Thành Công)
 
-Vercel build lỗi thường do 2 nguyên nhân: **Lỗi code TypeScript (Frontend/Backend)** hoặc **Lỗi cấu hình (vercel.json, biến môi trường)**. Trước khi `git push`, bạn **BẮT BUỘC** phải thực hiện checklist sau:
+Trước khi `git push` để deploy, bạn **BẮT BUỘC** phải thực hiện checklist sau để tránh lỗi build:
 
 ### Bước 1: Chạy kiểm tra tự động (Local Check)
 
-Chạy lệnh sau ở Terminal dưới máy bạn:
+Chạy lệnh sau ở Terminal:
 
 ```bash
 npm run check-local
 ```
 
-_(Script này sẽ tự động: Generate Prisma -> Check lỗi TypeScript Backend -> Chạy toàn bộ Test -> Build thử Frontend. Nếu Terminal báo xanh hết, tức là code của bạn 100% không bị lỗi build)._
+_(Script này sẽ tự động: Generate Prisma -> Check lỗi TypeScript Backend (đã bỏ qua thư mục frontend) -> Chạy toàn bộ Test -> Build thử Frontend. Nếu Terminal báo xanh hết, code của bạn 100% không bị lỗi build)._
 
 ### Bước 2: Kiểm tra file cấu hình (Manual Check)
 
-Script `check-local` không thể bắt được lỗi của các file cấu hình tĩnh. Bạn phải tự mở 2 file sau ra xem lại bằng mắt:
-
-1. **`vercel.json`:** Đảm bảo cú pháp JSON hợp lệ (không thừa dấu phẩy). Đảm bảo đường dẫn `destination` trỏ đúng file Serverless (ví dụ `/api/index.ts`).
-2. **`.env.example` và Vercel Dashboard:** Kiểm tra xem bạn có vừa thêm biến môi trường mới nào vào code không. Nếu có, phải lên Vercel Settings -> Environment Variables thêm biến đó trước khi deploy.
+- **`vercel.json`:** Đảm bảo cú pháp JSON hợp lệ. Đường dẫn `destination` trỏ đúng file Serverless.
+- **`.env.example` và Vercel Dashboard:** Kiểm tra xem có thêm biến môi trường mới nào không (đặc biệt là `AUDIT_SECRET_KEY`, `CRON_SECRET`, `GEMINI_API_KEY`).
 
 ### Bước 3: Quy trình Nâng cấp Database (Không Downtime)
 
-Nếu lần deploy này bạn có sửa file `schema.prisma` (thêm cột, bảng):
+Nếu có sửa file `schema.prisma`:
 
 1. Lên web Admin, bấm **Bật Bảo Trì Khẩn Cấp**.
 2. Push code lên Vercel.
 3. Chờ Vercel build xong (Ready).
-4. Ở máy local, chạy `npx prisma db push` để cập nhật Database Production.
+4. Ở máy local, chạy `npx prisma migrate deploy` để cập nhật Database Production.
 5. Lên web Admin, bấm **Tắt Bảo Trì**.
 
 ---
@@ -336,7 +333,7 @@ Nếu lần deploy này bạn có sửa file `schema.prisma` (thêm cột, bản
 - **Thanh toán thật:** Hệ thống đang chạy PayOS ở môi trường Production. Mọi giao dịch đều trừ tiền thật.
 - **Passkeys trên Vercel:** Đảm bảo biến môi trường `WEBAUTHN_RP_ID` và `WEBAUTHN_ORIGIN` được cấu hình chính xác với domain thực tế.
 - **Trình duyệt hỗ trợ Passkeys:** Trên iOS, khuyên dùng Safari hoặc Brave để tránh lỗi API WebAuthn của Chrome.
-- **Bảo trì khẩn cấp:** Khi cần nâng cấp Database/PayOS, hãy vào `Admin -> System Health` bấm nút **Bật Bảo Trì Khẩn Cấp** để chặn giao dịch, tránh lỗi dòng tiền.
+- **Không hỗ trợ trả sau:** Hệ thống đã loại bỏ hoàn toàn tính năng "Đặt vé trả sau" (LATER) để chống chiếm ghế ảo. Bắt buộc thanh toán 100% qua Ví.
 
 ---
 
