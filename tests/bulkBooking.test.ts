@@ -2,12 +2,13 @@ import { BookingService } from "../Service/bookingService";
 import prisma from "../database/prismaClient";
 import { describe, it, expect, beforeAll, afterAll, jest } from "@jest/globals";
 import {
-  teardownTestEnvironment,
   cleanupTestData,
   TEST_PREFIX,
+  teardownTestEnvironment,
 } from "./utils/dbTestHelper";
 
-jest.setTimeout(60000);
+jest.setTimeout(60000); // Tăng timeout vì khóa từng ghế tốn thời gian hơn
+
 jest.mock("../queues/mailQueue", () => ({
   sendNotificationEmail: jest.fn<any>(() => Promise.resolve({ success: true })),
   scheduleNotificationWithReset: jest.fn<any>(() => Promise.resolve(true)),
@@ -42,7 +43,6 @@ describe("Kiểm thử Đặt nhiều ghế cùng lúc (Bulk Booking)", () => {
 
   afterAll(async () => {
     await cleanupTestData();
-    await prisma.$disconnect();
     await teardownTestEnvironment();
   });
 
@@ -50,11 +50,11 @@ describe("Kiểm thử Đặt nhiều ghế cùng lúc (Bulk Booking)", () => {
     const seats = [1, 2, 3];
     const batchId = `TEST_BATCH_${Date.now()}`;
 
+    // Xóa tham số "WALLET" ở đây (hàm giờ chỉ nhận 4 tham số)
     const tickets = await BookingService.bookMultipleSeats(
       testUserId,
       testTripId,
       seats,
-      "WALLET",
       batchId,
     );
 

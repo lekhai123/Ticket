@@ -13,7 +13,7 @@ export const createBookingSchema = z.object({
       seatIds: z.array(z.string()).optional(),
       seatNumber: z.coerce.number().optional(),
 
-      paymentMethod: z.enum(["WALLET", "LATER"]).optional(),
+      paymentMethod: z.enum(["WALLET"]).optional().default("WALLET"),
     })
     .refine((data) => data.seatNumbers || data.seatIds || data.seatNumber, {
       message: "Số ghế không được bỏ trống!",

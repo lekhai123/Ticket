@@ -4,7 +4,6 @@ import type { ApiResponse } from "../types";
 export interface CreateBookingPayload {
   tripId: number | string;
   seatNumbers: number[];
-  paymentMethod?: "WALLET" | "LATER";
   batchId?: string;
 }
 

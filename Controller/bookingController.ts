@@ -19,8 +19,7 @@ export class BookingController {
         .json({ success: false, message: "Chưa đăng nhập!" });
     }
 
-    const { tripId, seatNumber, seatNumbers, paymentMethod, batchId } =
-      req.body;
+    const { tripId, seatNumber, seatNumbers, batchId } = req.body;
 
     const seatsToBook: number[] = (
       seatNumbers || (seatNumber ? [seatNumber] : [])
@@ -36,7 +35,6 @@ export class BookingController {
       Number(userId),
       Number(tripId),
       seatsToBook,
-      paymentMethod || "WALLET",
       batchId,
     );
 

@@ -11,6 +11,7 @@ jest.mock("../queues/mailQueue", () => ({
   sendNotificationEmail: jest.fn<any>(() => Promise.resolve({ success: true })),
   scheduleNotificationWithReset: jest.fn<any>(() => Promise.resolve(true)),
 }));
+
 describe("Kiểm thử Đặt vé (DB thật)", () => {
   let testUserId: number;
   let testTripId: number;
@@ -44,11 +45,11 @@ describe("Kiểm thử Đặt vé (DB thật)", () => {
   });
 
   it("Phải đặt vé thành công và trừ tiền ví chính xác", async () => {
+    // ✅ SỬA: Xóa tham số "WALLET" ở đây (hàm giờ chỉ nhận 4 tham số)
     const ticket = await BookingService.holdOrBookSeat(
       testUserId,
       testTripId,
       1,
-      "WALLET",
       `BATCH_${Date.now()}`,
     );
 
@@ -60,6 +61,6 @@ describe("Kiểm thử Đặt vé (DB thật)", () => {
     });
 
     expect(wallet).not.toBeNull();
-    expect(Number(wallet?.balance)).toBe(400000);
+    expect(Number(wallet?.balance)).toBe(400000); // 500k - 100k
   });
 });
