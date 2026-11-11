@@ -11,12 +11,12 @@ import {
 
 const router = Router();
 
-router.post(
+/*router.post(
   "/register",
   rateLimit(10, 60),
   validate(registerUserSchema),
   UserController.register,
-);
+);*/
 router.get("/me", authenticateToken, UserController.getMe);
 router.get(
   "/:id",

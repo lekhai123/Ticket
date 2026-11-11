@@ -70,7 +70,7 @@ export class AdminController {
         ? String(reason).trim()
         : "Hệ thống thu hồi vé lỗi giá 0đ";
 
-      // 2. Gọi hàm thu hồi hàng loạt (đã viết ở các bước trước)
+      // 2. Gọi hàm thu hồi hàng loạt 
       // Hàm này tự động gom nhóm theo User để hoàn tiền và gửi mail
       const result = await BookingService.adminRevokeMultipleTickets(
         ticketIds,

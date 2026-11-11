@@ -1,7 +1,6 @@
 import crypto from "crypto";
 
-const AUDIT_SECRET =
-  process.env.AUDIT_SECRET_KEY || "NexusTicket_Audit_Secret_2026";
+const AUDIT_SECRET = process.env.AUDIT_SECRET_KEY;
 
 export class AuditSigner {
   static generateSignature(data: any): string {
@@ -18,13 +17,13 @@ export class AuditSigner {
     };
 
     const signData = {
-      requestId: data.requestId,
-      userId: data.userId,
-      action: data.action,
-      resource: data.resource,
-      resourceId: data.resourceId,
-      newData: data.newData,
-      oldData: data.oldData,
+      requestId: data.requestId ?? null,
+      userId: data.userId ?? null,
+      action: data.action ?? null,
+      resource: data.resource ?? null,
+      resourceId: data.resourceId ?? null,
+      newData: data.newData ?? null,
+      oldData: data.oldData ?? null,
     };
 
     const sortedData = JSON.stringify(sortObject(signData));

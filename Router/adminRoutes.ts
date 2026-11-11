@@ -17,9 +17,35 @@ import {
 
 const router = Router();
 
+router.get("/cron/refresh-analytics", async (req, res) => {
+  const authHeader = req.headers.authorization;
+  const cronSecret = process.env.CRON_SECRET;
+
+  // kiểm tra biến môi trường có tồn tại không
+  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  try {
+    // dùng CONCURRENTLY để không khóa bảng khi đang làm mới
+    await prisma.$executeRawUnsafe(
+      `REFRESH MATERIALIZED VIEW CONCURRENTLY revenue_stats;`,
+    );
+    return res.json({
+      success: true,
+      message: "Đã làm mới bảng thống kê doanh thu (Materialized View)!",
+    });
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+// AI Quét vé bất thường
 router.get("/cron/ticket-auditor", async (req, res) => {
   const authHeader = req.headers.authorization;
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  const cronSecret = process.env.CRON_SECRET;
+
+  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
     return res.status(401).json({ error: "Unauthorized" });
   }
 
@@ -34,9 +60,12 @@ router.get("/cron/ticket-auditor", async (req, res) => {
   }
 });
 
+//Đối soát tài chính (AIOps)
 router.get("/cron/reconciliation", async (req, res) => {
   const authHeader = req.headers.authorization;
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  const cronSecret = process.env.CRON_SECRET;
+
+  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
     return res.status(401).json({ error: "Unauthorized" });
   }
 
@@ -46,23 +75,6 @@ router.get("/cron/reconciliation", async (req, res) => {
       success: true,
       checked: result.totalWalletsChecked,
       mismatches: result.mismatchCount,
-    });
-  } catch (error: any) {
-    return res.status(500).json({ error: error.message });
-  }
-});
-
-router.get("/cron/refresh-analytics", async (req, res) => {
-  const authHeader = req.headers.authorization;
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return res.status(401).json({ error: "Unauthorized" });
-  }
-
-  try {
-    await prisma.$executeRawUnsafe(`REFRESH MATERIALIZED VIEW revenue_stats;`);
-    return res.json({
-      success: true,
-      message: "Đã làm mới bảng thống kê doanh thu (Materialized View)!",
     });
   } catch (error: any) {
     return res.status(500).json({ error: error.message });

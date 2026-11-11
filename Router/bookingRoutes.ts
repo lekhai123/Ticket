@@ -4,12 +4,13 @@ import { authenticateToken } from "../Middleware/authMiddleware";
 import { validate } from "../Middleware/validateMiddleware";
 import { createBookingSchema } from "../Validation/bookingValidation";
 import { rateLimit } from "../Middleware/rateLimitMiddleware";
-
+import { checkWalletLock } from "../Middleware/walletGuard";
 const router = Router();
 
 router.post(
   "/",
   authenticateToken,
+  checkWalletLock, // chặn user có ví âm hoặc bị khóa
   rateLimit(60, 60),
   validate(createBookingSchema),
   BookingController.createBooking,
