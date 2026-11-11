@@ -94,7 +94,7 @@ Hệ thống được tổ chức theo luồng: **Client → API Gateway → Dom
 
 ## ⚡ 3. Các Tính Năng Kỹ Thuật Cốt Lõi
 
-- **High Availability:** Dual Redis Cluster tự động chuyển vùng (Failover) khi Primary gặp sự cố; API kiểm tra trạng thái hệ thống (`/system-status`) được cache 30s và đánh giá sống còn dựa trên cả Primary lẫn Backup.
+- **Application-level High Availability:** Tự động chuyển vùng (Failover) ở tầng ứng dụng. Khi Redis Primary sập, hệ thống tự động Dual-Write (ghi song song) và Fallback sang Backup...
 - **Multi-Level Cache:** Kết hợp LRU Cache (L1 - RAM, TTL 10s) và Redis (L2). Tự động Invalidate chuẩn xác các key chi tiết và phân trang (`trips:all:active*`) bằng `SCAN` khi có biến động đặt/hủy/thu hồi vé.
 - **Chống Race Condition Đa Tầng:**
   - **Đặt vé:** Sử dụng **Redis Distributed Lock** (Lua Script) kết hợp **Postgres Advisory Lock** (`pg_advisory_xact_lock`) khóa theo **TỪNG GHẾ** (Per-seat Lock) và chốt chặn cuối bằng **Partial Unique Index** (`tickets_active_seat_unique`) dưới PostgreSQL. Tự động sắp xếp thứ tự ghế tăng dần (`sortedSeats`) để chống Deadlock và tự động nhả các khóa đã giữ nếu 1 ghế trong lô bị xung đột.
@@ -151,7 +151,13 @@ k6 run load-test.js
 
 ### 4.3. Báo Cáo Độ Phủ (Jest Coverage)
 
-Hệ thống đạt kết quả **100% Pass**. Các phân hệ quan trọng đều có độ phủ cao:
+Hệ thống đạt kết quả **100% Pass** ở tất cả các bộ test. Đặc biệt, **100% các luồng nghiệp vụ cốt lõi (Core Business Logic)** liên quan đến tài chính và giao dịch đều được kiểm thử tự động (Integration Test):
+
+- `auth.test.ts`: Đăng nhập, phân quyền.
+- `wallet.test.ts` & `payos.test.ts`: Nạp tiền, thanh toán, chống giả mạo webhook.
+- `booking.test.ts` & `bulkBooking.test.ts`: Đặt vé đơn, đặt vé hàng loạt, chống Race Condition.
+- `reconciliation.test.ts`: AIOps đối soát số dư và khóa ví.
+- `auditSigner.test.ts`: Chống can thiệp dữ liệu (HMAC).
 
 | Phân Hệ (Module)              | % Statements | % Branches | % Functions |  % Lines   |
 | :---------------------------- | :----------: | :--------: | :---------: | :--------: |
@@ -161,6 +167,8 @@ Hệ thống đạt kết quả **100% Pass**. Các phân hệ quan trọng đ�
 | **Utils/** (Bảo mật, Lock)    |    66.91%    |   51.56%   |   68.96%    |   69.76%   |
 | **Middleware/** (Phân quyền)  |    61.11%    |   37.34%   |   59.09%    |   59.73%   |
 | **Tổng quan dự án**           |  **37.64%**  | **20.19%** | **26.13%**  | **38.09%** |
+
+_(Tổng quan độ phủ toàn dự án đạt ~38%, tập trung chủ yếu vào các file Utils và Middleware)._
 
 ### 4.4. Kết Quả Load Test (k6 - Production Vercel)
 
@@ -220,7 +228,7 @@ REDIS_URL_BACKUP="redis://default:YOUR_TOKEN@YOUR_BACKUP_HOST:6379"
 
 # Frontend & CORS
 VITE_API_URL="http://localhost:3000/api"
-FRONTEND_URL="[https://ticket-lekhai.vercel.app](https://ticket-lekhai.vercel.app)"
+FRONTEND_URL=FRONTEND_URL="https://ticket-lekhai.vercel.app"
 NODE_ENV="production"
 
 # JWT (Tối thiểu 32 ký tự)
