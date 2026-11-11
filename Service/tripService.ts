@@ -135,7 +135,8 @@ export class TripService {
     if (!trip) return null;
 
     const formatted = this.formatTripWithSeats(trip);
-    await MultiLevelCache.set(cacheKey, formatted, 10);
+    // FIX LỖI SERVERLESS: Giảm TTL xuống 2 giây để tránh lệch dữ liệu giữa các Lambda Instance
+    await MultiLevelCache.set(cacheKey, formatted, 2);
     return formatted;
   }
 

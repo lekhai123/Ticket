@@ -4,7 +4,8 @@ import prisma from "../database/prismaClient";
 import { TicketService } from "../Service/ticketService";
 import { BookingService } from "../Service/bookingService";
 import { MultiLevelCache } from "../Service/cacheService";
-
+// FIX LỖI ESM: Import thay vì require
+import { redisPrimary } from "../Utils/redisLock";
 const catchAsync =
   (fn: (req: Request, res: Response, next: NextFunction) => Promise<any>) =>
   (req: Request, res: Response, next: NextFunction) => {
@@ -287,7 +288,6 @@ export class AdminController {
   // Lấy trạng thái bảo trì hiện tại
   static getMaintenanceStatus = catchAsync(
     async (req: Request, res: Response) => {
-      const { redisPrimary } = require("../Utils/redisLock");
       const isMaintenance = await redisPrimary.get("system:maintenance_mode");
 
       res.status(200).json({
@@ -300,11 +300,9 @@ export class AdminController {
   // Bật / Tắt bảo trì
   static toggleMaintenance = catchAsync(async (req: Request, res: Response) => {
     const { enable } = req.body;
-    const { redisPrimary } = require("../Utils/redisLock");
 
     if (enable) {
       await redisPrimary.set("system:maintenance_mode", "true");
-      // Tự động tắt sau 15 phút để phòng trường hợp bạn quên
       await redisPrimary.expire("system:maintenance_mode", 900);
       return res
         .status(200)

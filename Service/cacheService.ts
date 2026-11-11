@@ -2,12 +2,11 @@ import { LRUCache } from "lru-cache";
 import { redisPrimary, redisBackup } from "../Utils/redisLock";
 import type Redis from "ioredis";
 
-// L1: cache RAM local, tối đa 500 key, TTL 10s
+// L1: cache RAM local, tối đa 500 key, TTL 2s
 const localCache = new LRUCache<string, any>({
   max: 500,
-  ttl: 1000 * 10,
+  ttl: 1000 * 2, // 2 giây
 });
-
 // Chuyển pattern kiểu Redis (`trip:*`) sang regex để lọc L1
 function patternToRegex(pattern: string): RegExp {
   const escaped = pattern
