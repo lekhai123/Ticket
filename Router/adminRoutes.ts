@@ -5,7 +5,6 @@ import { AdminController } from "../Controller/adminController";
 import { RevocationService } from "../Service/revocationService";
 import { ReconciliationService } from "../Service/reconciliationService";
 import { TicketService } from "../Service/ticketService";
-import { rateLimit } from "../Middleware/rateLimitMiddleware";
 import prisma from "../database/prismaClient";
 import {
   getStatsSchema,
@@ -21,13 +20,11 @@ router.get("/cron/refresh-analytics", async (req, res) => {
   const authHeader = req.headers.authorization;
   const cronSecret = process.env.CRON_SECRET;
 
-  // kiểm tra biến môi trường có tồn tại không
   if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
     return res.status(401).json({ error: "Unauthorized" });
   }
 
   try {
-    // dùng CONCURRENTLY để không khóa bảng khi đang làm mới
     await prisma.$executeRawUnsafe(
       `REFRESH MATERIALIZED VIEW CONCURRENTLY revenue_stats;`,
     );
@@ -40,7 +37,6 @@ router.get("/cron/refresh-analytics", async (req, res) => {
   }
 });
 
-// AI Quét vé bất thường
 router.get("/cron/ticket-auditor", async (req, res) => {
   const authHeader = req.headers.authorization;
   const cronSecret = process.env.CRON_SECRET;
@@ -60,7 +56,6 @@ router.get("/cron/ticket-auditor", async (req, res) => {
   }
 });
 
-//Đối soát tài chính (AIOps)
 router.get("/cron/reconciliation", async (req, res) => {
   const authHeader = req.headers.authorization;
   const cronSecret = process.env.CRON_SECRET;
@@ -81,9 +76,11 @@ router.get("/cron/reconciliation", async (req, res) => {
   }
 });
 
+// ==========================================
+// TẤT CẢ CÁC ROUTE DƯỚI ĐÂY ĐỀU LÀ CỦA ADMIN
+// Đã BỎ HOÀN TOÀN RATE LIMIT
+// ==========================================
 router.use(authenticateToken, requireAdmin);
-
-router.use(rateLimit(200, 60));
 
 router.get("/maintenance/status", AdminController.getMaintenanceStatus);
 router.post("/maintenance/toggle", AdminController.toggleMaintenance);
@@ -94,12 +91,7 @@ router.get(
   AdminController.getStats,
 );
 router.get("/users", validate(getUsersSchema), AdminController.getUsers);
-router.post(
-  "/mass-gift",
-  rateLimit(20, 60),
-  validate(massGiftSchema),
-  AdminController.massGift,
-);
+router.post("/mass-gift", validate(massGiftSchema), AdminController.massGift);
 router.get(
   "/system-health",
   validate(getHealthSchema),
@@ -111,9 +103,9 @@ router.get(
   AdminController.getAuditLogs,
 );
 router.get("/tickets", AdminController.getTickets);
-router.get("/tickets/scan", rateLimit(30, 60), AdminController.scanTickets);
+router.get("/tickets/scan", AdminController.scanTickets);
 
-router.post("/revoke-batch", rateLimit(20, 60), async (req, res, next) => {
+router.post("/revoke-batch", async (req, res, next) => {
   try {
     const { batchId } = req.body;
     const adminUserId = (req as any).user?.id || (req as any).user?.userId;
@@ -129,18 +121,10 @@ router.post("/revoke-batch", rateLimit(20, 60), async (req, res, next) => {
   }
 });
 
-router.post(
-  "/bookings/:ticketId/revoke",
-  rateLimit(30, 60),
-  AdminController.revokeSingleTicket,
-);
-router.post(
-  "/tickets/revoke-anomalies",
-  rateLimit(10, 60),
-  AdminController.revokeAnomalyTickets,
-);
+router.post("/bookings/:ticketId/revoke", AdminController.revokeSingleTicket);
+router.post("/tickets/revoke-anomalies", AdminController.revokeAnomalyTickets);
 router.get("/system-alerts", AdminController.getSystemAlerts);
-router.post("/reconciliation/trigger", rateLimit(10, 60), async (req, res) => {
+router.post("/reconciliation/trigger", async (req, res) => {
   try {
     const report = await ReconciliationService.runDailyReconciliation();
     return res.status(200).json({
