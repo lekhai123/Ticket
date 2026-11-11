@@ -1,5 +1,29 @@
 import prisma from "../database/prismaClient";
 import { payosInstance } from "../Utils/payos";
+import CircuitBreaker from "opossum";
+
+// Cấu hình Cầu dao cho PayOS
+const payosAction = async (paymentData: any) => {
+  return await payosInstance.createPaymentLink(paymentData);
+};
+
+const payosBreaker = new CircuitBreaker(payosAction, {
+  timeout: 10000, // PayOS thường phản hồi trong 1-2s, chờ tối đa 10s là ngắt
+  errorThresholdPercentage: 50, // Ngắt nếu > 50% request lỗi
+  volumeThreshold: 3, // Chỉ cần 3 request lỗi liên tiếp là ngắt
+  resetTimeout: 60000, // Chờ 1 phút trước khi thử lại
+});
+
+// Khi PayOS sập, trả về lỗi ngay lập tức cho người dùng
+payosBreaker.fallback(() => {
+  throw new Error(
+    "Cổng thanh toán PayOS đang bảo trì. Vui lòng thử lại sau 1 phút!",
+  );
+});
+
+payosBreaker.on("open", () =>
+  console.warn(`[Circuit Breaker] 🔴 MẠCH ĐÃ NGẮT: PayOS đang sập!`),
+);
 
 export class PaymentService {
   // 1. Tạo link thanh toán
@@ -8,7 +32,7 @@ export class PaymentService {
 
     // Sinh orderCode ngẫu nhiên (9 chữ số)
     const orderCode = Number(Date.now().toString().slice(-9));
-    const returnUrl = process.env.WEBAUTHN_ORIGIN || "http://localhost:5173"; // Dùng tạm domain FE
+    const returnUrl = process.env.WEBAUTHN_ORIGIN || "http://localhost:5173";
 
     // Lưu DB trạng thái PENDING
     const transaction = await prisma.paymentTransaction.create({
@@ -28,7 +52,8 @@ export class PaymentService {
       returnUrl: `${returnUrl}/customer/wallet`,
     };
 
-    const paymentLinkRes = await payosInstance.createPaymentLink(paymentData);
+    // Gọi qua Cầu dao thay vì gọi trực tiếp payosInstance
+    const paymentLinkRes = (await payosBreaker.fire(paymentData)) as any;
 
     // Cập nhật lại checkoutUrl vào DB
     await prisma.paymentTransaction.update({
@@ -70,7 +95,7 @@ export class PaymentService {
         return;
       }
 
-      // ✅ Bọc trong Transaction để đảm bảo cộng tiền và update status đồng thời
+      // Bọc trong Transaction để đảm bảo cộng tiền và update status đồng thời
       await prisma.$transaction(async (tx) => {
         // 1. Update trạng thái
         await tx.paymentTransaction.update({

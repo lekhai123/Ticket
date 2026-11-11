@@ -1,5 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import CircuitBreaker from "opossum";
 
 interface AIProvider {
   name: string;
@@ -21,6 +22,52 @@ export class AIProxyService {
     },
   ];
 
+  // lưu trữ các Circuit Breaker trong bộ nhớ để tái sử dụng
+  private static breakers: Map<string, CircuitBreaker> = new Map();
+
+  private static getBreaker(provider: AIProvider): CircuitBreaker {
+    if (!this.breakers.has(provider.name)) {
+      // Hàm gọi API thực tế (Action)
+      const action = async (prompt: string) => {
+        const genAI = new GoogleGenerativeAI(provider.apiKey);
+        const model = genAI.getGenerativeModel({ model: provider.modelName });
+        const response = await model.generateContent(prompt);
+        return response.response.text();
+      };
+
+      // Khởi tạo Cầu dao (Circuit Breaker)
+      const breaker = new CircuitBreaker(action, {
+        timeout: 20000, // Thời gian chờ tối đa 1 request là 20s
+        errorThresholdPercentage: 50, // Ngắt mạch nếu > 50% request bị lỗi
+        volumeThreshold: 5, // Phải có ít nhất 5 request bị lỗi thì mới xét ngắt mạch
+        resetTimeout: 60000, // Thử mở lại mạch sau 1 phút
+      });
+
+      // Khi mạch bị ngắt (Open), lập tức ném lỗi Fallback mà không gọi API
+      breaker.fallback(() => {
+        throw new Error(
+          `[Circuit Open] ${provider.name} đang tạm ngưng do lỗi liên tục.`,
+        );
+      });
+
+      // Log trạng thái để dễ debug
+      breaker.on("open", () =>
+        console.warn(`[Circuit Breaker] 🔴 MẠCH ĐÃ NGẮT cho ${provider.name}`),
+      );
+      breaker.on("halfOpen", () =>
+        console.log(`[Circuit Breaker] 🟡 ĐANG THỬ LẠI cho ${provider.name}`),
+      );
+      breaker.on("close", () =>
+        console.log(
+          `[Circuit Breaker] 🟢 MẠCH ĐÃ ĐÓNG LẠI cho ${provider.name}`,
+        ),
+      );
+
+      this.breakers.set(provider.name, breaker);
+    }
+    return this.breakers.get(provider.name)!;
+  }
+
   static async generateWithFallback(prompt: string): Promise<string> {
     let lastError: any = null;
 
@@ -29,21 +76,13 @@ export class AIProxyService {
 
       try {
         console.log(`[AI Proxy] Đang xử lý qua Provider: ${provider.name}...`);
-        const genAI = new GoogleGenerativeAI(provider.apiKey);
-        const model = genAI.getGenerativeModel({ model: provider.modelName });
+        const breaker = this.getBreaker(provider);
 
-        // Tăng thời gian chờ lên 20 giây để AI kịp xử lý JSON dài
-        const response = await Promise.race([
-          model.generateContent(prompt),
-          new Promise<any>((_, reject) =>
-            setTimeout(() => reject(new Error("Timeout AI sau 20s")), 20000),
-          ),
-        ]);
-
-        const responseText = response.response.text();
+        // Bắn request qua Cầu dao (Cầu dao sẽ tự xử lý Timeout)
+        const responseText = await breaker.fire(prompt);
 
         if (responseText) {
-          return responseText;
+          return responseText as any;
         }
       } catch (error: any) {
         lastError = error;
