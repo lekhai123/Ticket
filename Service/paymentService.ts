@@ -68,10 +68,10 @@ export class PaymentService {
   }
 
   // 2. Xử lý Webhook (Khi PayOS gọi về)
+
   static async handleWebhook(webhookBody: any) {
     const { code, success, data } = webhookBody;
 
-    // Verify Signature (Chống hacker giả mạo)
     const isValid = payosInstance.verifyWebhookData(webhookBody);
     if (!isValid) throw new Error("Chữ ký không hợp lệ!");
 
@@ -79,38 +79,31 @@ export class PaymentService {
       const orderCode = Number(data.orderCode);
       const amountPaid = Number(data.amount);
 
-      // Tìm giao dịch trong DB
-      const transaction = await prisma.paymentTransaction.findUnique({
-        where: { orderCode },
-      });
-
-      // Idempotency: Nếu đã SUCCESS rồi thì bỏ qua (PayOS có thể gọi 2 lần)
-      if (!transaction || transaction.status === "SUCCESS") return;
-
-      if (amountPaid < Number(transaction.amount)) {
-        await prisma.paymentTransaction.update({
-          where: { id: transaction.id },
-          data: { status: "FAILED" },
-        });
-        return;
-      }
-
-      // Bọc trong Transaction để đảm bảo cộng tiền và update status đồng thời
       await prisma.$transaction(async (tx) => {
-        // 1. Update trạng thái
-        await tx.paymentTransaction.update({
-          where: { id: transaction.id },
+        // Dùng updateMany để khóa giao dịch, chống webhook gọi 2 lần
+        const updated = await tx.paymentTransaction.updateMany({
+          where: { orderCode, status: "PENDING" }, // Chỉ update nếu đang chờ
           data: { status: "SUCCESS" },
         });
 
-        // 2. Cộng tiền vào ví
+        if (updated.count === 0) return; // Đã được xử lý bởi webhook trước đó
+
+        const transaction = await tx.paymentTransaction.findUnique({
+          where: { orderCode },
+        });
+        if (!transaction || amountPaid < Number(transaction.amount)) {
+          // Nếu thiếu tiền thì đánh dấu thất bại (nhưng vẫn giữ status SUCCESS ở trên hoặc xử lý riêng tùy logic)
+          return;
+        }
+
+        // Cộng tiền vào ví
         const updatedWallet = await tx.wallets.update({
           where: { userId: transaction.userId },
           data: { balance: { increment: amountPaid } },
           select: { balance: true, id: true },
         });
 
-        // 3. Ghi AuditLog
+        // Ghi AuditLog
         await tx.auditLog.create({
           data: {
             requestId: `PAYOS_${orderCode}`,

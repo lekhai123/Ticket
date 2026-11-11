@@ -392,7 +392,7 @@ export class AdminService {
         try {
           const start = Date.now();
           const genAI = new GoogleGenerativeAI(primaryKey);
-      
+
           const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
           await model.countTokens("ping");
           geminiHealth.primary.latency = `${Date.now() - start}ms`;

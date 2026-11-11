@@ -175,7 +175,7 @@ export class RevocationService {
 
               try {
                 await MultiLevelCache.invalidate(`trips:detail:${tripId}`);
-                await MultiLevelCache.invalidate("trips:all:active");
+                await MultiLevelCache.invalidate("trips:all:active*");
               } catch (cacheErr) {
                 console.warn("Xóa cache thất bại:", cacheErr);
               }

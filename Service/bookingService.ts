@@ -144,7 +144,7 @@ export class BookingService {
 
     void Promise.all([
       MultiLevelCache.invalidate(`trips:detail:${tripId}`),
-      MultiLevelCache.invalidate("trips:all:active"),
+      MultiLevelCache.invalidate("trips:all:active*"),
     ]).catch((err) =>
       console.warn("[BOOKING] cache invalidation:", err?.message),
     );
@@ -169,24 +169,47 @@ export class BookingService {
       throw error;
     }
 
+    // Sắp xếp ghế tăng dần để chống Deadlock
     const sortedSeats = [...seatNumbers].sort((a, b) => a - b);
-    const lockKey = `lock:trip:${tripId}`;
-    const lockToken = await RedisLock.acquire(lockKey, 30);
-    const t1 = Date.now();
 
-    if (!lockToken) {
-      const error: any = new Error("Hệ thống đang bận, vui lòng thử lại sau!");
-      error.statusCode = 409;
-      throw error;
+    // Mảng lưu các lock đã lấy để giải phóng nếu có lỗi giữa chừng
+    const acquiredLocks: { key: string; token: string }[] = [];
+
+    try {
+      // Lấy khóa cho TỪNG ghế một
+      for (const seat of sortedSeats) {
+        const lockKey = `lock:trip:${tripId}:seat:${seat}`;
+        const lockToken = await RedisLock.acquire(lockKey, 30);
+
+        if (!lockToken) {
+          const error: any = new Error(
+            `Ghế số ${seat} đang có người khác thao tác, vui lòng thử lại!`,
+          );
+          error.statusCode = 409;
+          throw error;
+        }
+        acquiredLocks.push({ key: lockKey, token: lockToken });
+      }
+    } catch (err) {
+      // Nếu lấy khóa thất bại, nhả tất cả khóa đã lấy trước đó
+      for (const lock of acquiredLocks) {
+        await RedisLock.release(lock.key, lock.token);
+      }
+      throw err;
     }
 
+    const t1 = Date.now();
     let resultTickets: any[] = [];
     const effectiveBatchId = batchId || `BATCH_${Date.now()}`;
 
     try {
       resultTickets = await prisma.$transaction(
         async (tx) => {
-          await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`trip:${tripId}`}))::text`;
+          // Khóa Advisory trên TỪNG ghế (phải theo đúng thứ tự tăng dần)
+          for (const seat of sortedSeats) {
+            await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`seat:${tripId}:${seat}`}))::text`;
+          }
+
           const existingTickets = await tx.tickets.findMany({
             where: {
               tripId,
@@ -286,7 +309,10 @@ export class BookingService {
         { timeout: 20000 },
       );
     } finally {
-      await RedisLock.release(lockKey, lockToken);
+      // Nhả TẤT CẢ các khóa đã lấy
+      for (const lock of acquiredLocks) {
+        await RedisLock.release(lock.key, lock.token);
+      }
     }
     const t2 = Date.now();
 
@@ -313,7 +339,7 @@ export class BookingService {
 
     void Promise.all([
       MultiLevelCache.invalidate(`trips:detail:${tripId}`),
-      MultiLevelCache.invalidate("trips:all:active"),
+      MultiLevelCache.invalidate("trips:all:active*"),
     ]).catch((err) =>
       console.warn("[BOOKING] cache invalidation:", err?.message),
     );
@@ -333,18 +359,29 @@ export class BookingService {
       where: { id: ticketId },
       include: { trip: true, user: true },
     });
+
     if (!ticket) throw new Error("Không tìm thấy vé!");
     if (ticket.status === "REVOKED_BY_ADMIN" || ticket.status === "CANCELED")
       throw new Error("Vé này đã bị thu hồi/hủy trước đó!");
 
     const result = await prisma.$transaction(async (tx) => {
-      const updated = await tx.tickets.update({
-        where: { id: ticketId },
+      // Dùng updateMany kèm điều kiện status để khóa dòng, chống Double Refund
+      const updated = await tx.tickets.updateMany({
+        where: { id: ticketId, status: "CONFIRMED" },
         data: { status: "REVOKED_BY_ADMIN" },
       });
+
+      // Nếu count = 0, tức là request khác đã thu hồi vé này trước đó rồi
+      if (updated.count === 0) {
+        throw new Error(
+          "Vé đã được thu hồi hoặc không ở trạng thái có thể thu hồi!",
+        );
+      }
+
       let refundAmount = 0;
-      if (ticket.status === "CONFIRMED")
+      if (ticket.status === "CONFIRMED") {
         refundAmount = Number(ticket.paidAmount ?? ticket.trip.price ?? 0);
+      }
 
       if (refundAmount > 0) {
         const wallet = await tx.wallets.findUnique({
@@ -354,12 +391,14 @@ export class BookingService {
           throw new Error(
             "Không tìm thấy ví để hoàn tiền! Dữ liệu vé bất thường.",
           );
+
         const currentBalance = Number(wallet.balance || 0);
 
         await tx.wallets.update({
           where: { userId: ticket.userId },
           data: { balance: { increment: refundAmount } },
         });
+
         await tx.auditLog.create({
           data: {
             requestId: `ADMIN_REVOKE_REFUND_${Date.now()}`,
@@ -394,7 +433,7 @@ export class BookingService {
           },
         },
       });
-      return updated;
+      return { success: true }; // Trả về object thay vì ticket cũ
     });
 
     if (ticket.user) {
@@ -416,7 +455,7 @@ export class BookingService {
 
     void Promise.all([
       MultiLevelCache.invalidate(`trips:detail:${ticket.tripId}`),
-      MultiLevelCache.invalidate("trips:all:active"),
+      MultiLevelCache.invalidate("trips:all:active*"),
       MultiLevelCache.invalidate(`user:${ticket.userId}:tickets*`),
     ]).catch((err) =>
       console.warn("[BOOKING] cache invalidation:", err?.message),
@@ -426,36 +465,42 @@ export class BookingService {
   }
 
   static async cancelTicket(userId: number, ticketId: number) {
+    // Đọc trước để check quyền sở hữu
     const ticket = await prisma.tickets.findUnique({
       where: { id: ticketId },
       include: { trip: true, user: true },
     });
-    if (!ticket) {
-      const error: any = new Error("Không tìm thấy vé đặt!");
-      error.statusCode = 404;
-      throw error;
-    }
-    if (ticket.userId !== userId) {
-      const error: any = new Error("Bạn không có quyền hủy vé này!");
-      error.statusCode = 403;
-      throw error;
-    }
-    if (
-      ticket.status === "CANCELED" ||
-      ticket.status === "USED" ||
-      ticket.status === "REVOKED_BY_ADMIN"
-    ) {
-      const error: any = new Error("Vé này không thể hủy được nữa!");
-      error.statusCode = 400;
-      throw error;
+
+    if (!ticket)
+      throw Object.assign(new Error("Không tìm thấy vé đặt!"), {
+        statusCode: 404,
+      });
+    if (ticket.userId !== userId)
+      throw Object.assign(new Error("Bạn không có quyền hủy vé này!"), {
+        statusCode: 403,
+      });
+    if (["CANCELED", "USED", "REVOKED_BY_ADMIN"].includes(ticket.status)) {
+      throw Object.assign(new Error("Vé này không thể hủy được nữa!"), {
+        statusCode: 400,
+      });
     }
 
     const result = await prisma.$transaction(async (tx) => {
-      const updatedTicket = await tx.tickets.update({
-        where: { id: ticketId },
+      // Dùng updateMany kèm điều kiện status để khóa dòng, chống Double Refund
+      const updated = await tx.tickets.updateMany({
+        where: { id: ticketId, userId, status: "CONFIRMED" },
         data: { status: "CANCELED" },
       });
 
+      // Nếu count = 0 tức là request khác đã hủy vé này trước đó rồi
+      if (updated.count === 0) {
+        throw Object.assign(
+          new Error("Vé đã được hủy hoặc trạng thái không hợp lệ!"),
+          { statusCode: 409 },
+        );
+      }
+
+      // Chỉ cộng tiền nếu vé ban đầu thực sự đã thanh toán (CONFIRMED)
       if (ticket.status === "CONFIRMED") {
         const refundAmount = Number(
           ticket.paidAmount ?? ticket.trip.price ?? 0,
@@ -463,6 +508,7 @@ export class BookingService {
         if (refundAmount > 0) {
           const wallet = await tx.wallets.findUnique({ where: { userId } });
           if (!wallet) throw new Error("Không tìm thấy ví để hoàn tiền!");
+
           const currentBalance = Number(wallet.balance || 0);
 
           await tx.wallets.update({
@@ -486,7 +532,7 @@ export class BookingService {
           });
         }
       }
-      return updatedTicket;
+      return { success: true };
     });
 
     if (ticket.user) {
@@ -494,10 +540,7 @@ export class BookingService {
         await sendNotificationEmail({
           email: ticket.user.email,
           type: "BOOKING_CANCEL",
-          data: {
-            route: ticket.trip.route,
-            seat: ticket.seatNumber,
-          },
+          data: { route: ticket.trip.route, seat: ticket.seatNumber },
         });
       } catch (mailErr: any) {
         console.error("[BOOKING] Hủy vé mail error:", mailErr?.message);
@@ -506,7 +549,7 @@ export class BookingService {
 
     void Promise.all([
       MultiLevelCache.invalidate(`trips:detail:${ticket.tripId}`),
-      MultiLevelCache.invalidate("trips:all:active"),
+      MultiLevelCache.invalidate("trips:all:active*"), // ✅ Thêm dấu * ở đây
       MultiLevelCache.invalidate(`user:${userId}:tickets*`),
     ]).catch((err) =>
       console.warn("[BOOKING] cache invalidation:", err?.message),

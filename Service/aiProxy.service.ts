@@ -12,7 +12,7 @@ export class AIProxyService {
   private static providers: AIProvider[] = [
     {
       name: "Gemini-Primary",
-      apiKey: process.env.GEMINI_PRIMARY_KEY || "",
+      apiKey: process.env.GEMINI_KEY_API || "",
       modelName: "gemini-3.6-flash",
     },
     {

@@ -4,10 +4,9 @@ import { AIProxyService } from "./aiProxy.service";
 
 // Gom toàn bộ cache key vào 1 chỗ để tránh lệch pattern
 const CACHE_KEYS = {
-  ALL_TRIPS: "trips:all:active",
+  ALL_TRIPS: "trips:all:active*", // thêm dấu * để xóa được toàn bộ cache phân trang
   TRIP_DETAIL: (id: number) => `trips:detail:${id}`,
 } as const;
-
 export class TripService {
   static async getEmbedding(text: string): Promise<number[]> {
     return await AIProxyService.getEmbeddingWithFallback(text);
