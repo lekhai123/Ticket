@@ -1,7 +1,7 @@
 import prisma from "../database/prismaClient";
 import { payosInstance } from "../Utils/payos";
 import CircuitBreaker from "opossum";
-
+import crypto from "crypto";
 // Cấu hình Cầu dao cho PayOS
 const payosAction = async (paymentData: any) => {
   return await payosInstance.createPaymentLink(paymentData);
@@ -31,7 +31,10 @@ export class PaymentService {
     if (amount < 10000) throw new Error("Số tiền nạp tối thiểu là 10,000 VNĐ");
 
     // Sinh orderCode ngẫu nhiên (9 chữ số)
-    const orderCode = Number(Date.now().toString().slice(-9));
+    const randomSuffix = crypto.randomInt(100, 999);
+    const orderCode = Number(
+      `${Date.now().toString().slice(-6)}${randomSuffix}`,
+    );
     const returnUrl = process.env.WEBAUTHN_ORIGIN || "http://localhost:5173";
 
     // Lưu DB trạng thái PENDING

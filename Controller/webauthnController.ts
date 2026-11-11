@@ -9,9 +9,19 @@ import prisma from "../database/prismaClient";
 import { AuthService } from "../Service/authService";
 
 const rpName = "NexusTicket";
-
 const rpID = process.env.WEBAUTHN_RP_ID || "localhost";
 const origin = process.env.WEBAUTHN_ORIGIN || "http://localhost:5173";
+
+// FIX LỖI COOKIE: Đồng bộ config với authController.ts
+const isProduction =
+  process.env.NODE_ENV === "production" || process.env.VERCEL === "1";
+const REFRESH_COOKIE_OPTS = {
+  httpOnly: true,
+  secure: isProduction,
+  sameSite: isProduction ? ("none" as const) : ("lax" as const),
+  maxAge: 7 * 24 * 60 * 60 * 1000,
+  path: "/api/auth",
+};
 
 export class WebAuthnController {
   /**

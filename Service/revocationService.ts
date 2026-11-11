@@ -180,8 +180,9 @@ export class RevocationService {
                 console.warn("Xóa cache thất bại:", cacheErr);
               }
 
-              const actualPaidAmount = Math.abs(
-                Number(newDataObj?.amount || 0),
+              const actualPaidAmount = ticketsToRevoke.reduce(
+                (sum, t) => sum + Number(t.paidAmount || 0),
+                0,
               );
 
               const user = await tx.users.findUnique({
