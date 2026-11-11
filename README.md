@@ -2,9 +2,9 @@
 
 NexusTicket là hệ thống đặt vé xe trực tuyến toàn diện, được thiết kế theo mô hình **Modular Monolith**. Dự án hướng tới mục tiêu trở thành một **Sản phẩm Nghiên cứu (SPNC)** với kiến trúc bảo mật đa lớp, khả năng chịu tải cao, và tích hợp Trí tuệ Nhân tạo (AI) sâu vào khâu vận hành (AIOps).
 
-- **Backend:** Node.js, Express, TypeScript, Prisma ORM, PostgreSQL (`pgvector`).
+- **Backend:** Node.js, Express, TypeScript (Strict Mode), Prisma ORM, PostgreSQL (`pgvector`).
 - **Frontend:** React, Vite, TailwindCSS, React Query.
-- **Hạ tầng & Tiện ích:** Vercel (API & Daemons), Docker, Dual Redis Cluster (HA), Multi-Level Cache, BullMQ, PayOS Payment Gateway, Cloudinary (Dual Bucket).
+- **Hạ tầng & Tiện ích:** Vercel (API & Daemons), Docker, Application-level Dual Redis (HA), Multi-Level Cache, BullMQ, PayOS Payment Gateway, Cloudinary (Dual Bucket).
 - **Bảo mật & Chịu lỗi:** Passkeys (WebAuthn), JWT Rotation & Revocation, AES-256-GCM Encryption, HMAC Audit Logs, Rate Limiting, Helmet, Circuit Breaker (Opossum).
 - **Kiểm thử:** Jest, Playwright (E2E), k6 (Load Test).
 
@@ -35,7 +35,7 @@ Hệ thống được tổ chức theo luồng: **Client → API Gateway → Dom
    ┌─────────┼──────────┬──────────┬──────────┬─────────┐
    ▼         ▼          ▼          ▼          ▼         ▼
 [Auth]    [Trips]   [Booking]   [Payments] [Wallets]  [Admin]
-(Pipeline Middleware: Auth JWT, Wallet Guard, Idempotency (SET NX), IP Guard, Zod Validator, Rate Limit, Maintenance)
+(Pipeline Middleware: Auth JWT, Wallet Guard, Idempotency (SET NX + Hash), IP Guard, Zod Validator, Rate Limit, Maintenance)
              │
              ▼
 ════════════════════════ DOMAIN SERVICES ═══════════════════════
@@ -52,7 +52,7 @@ Hệ thống được tổ chức theo luồng: **Client → API Gateway → Dom
              ▼
 ══════════════════════ OPERATIONS & STATE ══════════════════════
  ├── PostgreSQL (Prisma ORM) – Dữ liệu chính (pgvector + Partial Unique Index + Materialized View)
- ├── Dual Redis Cluster (Primary & Backup Write-through Failover)
+ ├── Dual Redis (Primary & Backup Write-through Failover)
  ├── Vercel Daemons (BullMQ Mail Worker chạy nền độc lập)
  ├── PayOS Payment Gateway (Production)
  ├── Cloudinary Storage (Dual Cloud Fallback)
@@ -63,7 +63,7 @@ Hệ thống được tổ chức theo luồng: **Client → API Gateway → Dom
 
 ## 🔐 2. Tính Năng Bảo Mật & Kiểm Soát Tài Chính (Zero-Trust)
 
-### 2.1. Xác Thực Không Mật Khẩu (Passkeys / WebAuthn) & Kiến Trúc Mã Hóa Mở Rộng
+### 2.1. Xác Thực Không Mật Khẩu (Passkeys) & Kiến Trúc Mã Hóa Mở Rộng
 
 - **Xác thực Passkeys:** Hỗ trợ đăng nhập bằng Vân tay, Face ID hoặc Windows Hello kèm bộ đếm `counter` chống Replay Attack. Khóa riêng tư (Private Key) được lưu giữ an toàn trong phần cứng thiết bị người dùng, loại bỏ triệt để nguy cơ Phishing và rò rỉ cơ sở dữ liệu xác thực.
 - **Sẵn sàng mở rộng (Application-Level Encryption - AES-256-GCM):**
@@ -90,18 +90,19 @@ Hệ thống được tổ chức theo luồng: **Client → API Gateway → Dom
 - Tích hợp `helmet` giấu header `X-Powered-By`.
 - Cấu hình `trust proxy` chống Spoofing IP qua header `X-Forwarded-For` cho Rate Limiter và IP Blacklist Guard.
 - Siết chặt CORS chỉ cho phép đúng domain Frontend đã được làm sạch URL.
-- Middleware `Idempotency` sử dụng lệnh nguyên tử `SET NX EX 60` của Redis để khóa trạng thái `"PROCESSING"` ngay từ đầu request, chống triệt để lỗi TOCTOU khi có 2 request trùng lặp gửi đồng thời.
+- Middleware `Idempotency` sử dụng lệnh nguyên tử `SET NX EX 60` kết hợp **băm Payload Hash (SHA-256)** để khóa trạng thái `"PROCESSING"`. Nếu client cố tình dùng lại Key nhưng thay đổi nội dung (ví dụ: đổi số tiền nạp), hệ thống sẽ lập tức từ chối, chống triệt để lỗi TOCTOU và gian lận.
 - Bảo vệ 3 API Cron bằng `CRON_SECRET` (kiểm tra tồn tại biến môi trường nghiêm ngặt, chống lỗi `Bearer undefined`).
 
 ---
 
 ## ⚡ 3. Các Tính Năng Kỹ Thuật Cốt Lõi
 
-- **Application-level High Availability:** Tự động chuyển vùng (Failover) ở tầng ứng dụng. Khi Redis Primary sập, hệ thống tự động Dual-Write (ghi song song) và Fallback sang Backup...
-- **Multi-Level Cache:** Kết hợp LRU Cache (L1 - RAM, TTL 10s) và Redis (L2). Tự động Invalidate chuẩn xác các key chi tiết và phân trang (`trips:all:active*`) bằng `SCAN` khi có biến động đặt/hủy/thu hồi vé.
+- **Application-level High Availability:** Tự động chuyển vùng (Failover) ở tầng ứng dụng. Khi Redis Primary sập, hệ thống tự động Dual-Write (ghi song song) và Fallback sang Backup. Đánh giá trạng thái sống còn của hệ thống dựa trên cả Primary lẫn Backup.
+- **Multi-Level Cache:** Kết hợp LRU Cache (L1 - RAM, TTL 2s - tối ưu cho môi trường Serverless) và Redis (L2). Tự động Invalidate chuẩn xác các key chi tiết và phân trang (`trips:all:active*`) bằng `SCAN` khi có biến động đặt/hủy/thu hồi vé.
 - **Chống Race Condition Đa Tầng:**
   - **Đặt vé:** Sử dụng **Redis Distributed Lock** (Lua Script) kết hợp **Postgres Advisory Lock** (`pg_advisory_xact_lock`) khóa theo **TỪNG GHẾ** (Per-seat Lock) và chốt chặn cuối bằng **Partial Unique Index** (`tickets_active_seat_unique`) dưới PostgreSQL. Tự động sắp xếp thứ tự ghế tăng dần (`sortedSeats`) để chống Deadlock và tự động nhả các khóa đã giữ nếu 1 ghế trong lô bị xung đột.
   - **Hủy vé / Thu hồi vé / Webhook PayOS:** Chống **Double Refund** (hoàn tiền 2 lần) và **Double Top-up** (cộng tiền 2 lần) bằng kỹ thuật Atomic Conditional Update (`updateMany` kèm điều kiện trạng thái `status: "CONFIRMED"` hoặc `status: "PENDING"`) bên trong Database Transaction.
+  - **Thanh toán (PayOS):** Sinh mã `orderCode` bằng cách kết hợp Timestamp và Random Suffix, chống tuyệt đối lỗi trùng lặp giao dịch (Unique Constraint) khi hàng ngàn user bấm nạp tiền trong cùng 1 mili-giây.
 - **Tìm kiếm AI (Hybrid Search):** Kết hợp tìm kiếm từ khóa (`ILIKE`), bộ lọc khung giờ thông minh (sáng/chiều/tối) và tìm kiếm ngữ nghĩa (Gemini Vector `pgvector` 1536 chiều) với cơ chế Fallback tự động mở rộng kết quả.
 - **Báo cáo Doanh thu Hiệu năng cao:** Sử dụng PostgreSQL **Materialized View** (`revenue_stats`) kèm Unique Index giúp làm mới dữ liệu thống kê ngầm bằng lệnh `REFRESH MATERIALIZED VIEW CONCURRENTLY` mà không gây khóa bảng khi người dùng đang truy vấn.
 
@@ -171,7 +172,7 @@ Hệ thống đạt kết quả **100% Pass** ở tất cả các bộ test. Đ�
 | **Middleware/** (Phân quyền)  |    61.11%    |   37.34%   |   59.09%    |   59.73%   |
 | **Tổng quan dự án**           |  **37.64%**  | **20.19%** | **26.13%**  | **38.09%** |
 
-_(Tổng quan độ phủ toàn dự án đạt ~38%, tập trung chủ yếu vào các file Utils và Middleware)._
+_(Chỉ số 37.64% là độ phủ tổng thể toàn dự án (bao gồm các file cấu hình, cronjob chưa cần test). Tuy nhiên, nhờ áp dụng Integration Test đi xuyên qua toàn bộ luồng (Router -> Middleware -> Controller -> Service -> DB), 100% các luồng nghiệp vụ cốt lõi (Core Business Logic) liên quan đến tài chính (Booking, Wallet, PayOS) đều đã được bao phủ hoàn toàn)_
 
 ### 4.4. Kết Quả Load Test (k6 - Production Vercel)
 
@@ -231,7 +232,7 @@ REDIS_URL_BACKUP="redis://default:YOUR_TOKEN@YOUR_BACKUP_HOST:6379"
 
 # Frontend & CORS
 VITE_API_URL="http://localhost:3000/api"
-FRONTEND_URL=FRONTEND_URL="https://ticket-lekhai.vercel.app"
+FRONTEND_URL="https://ticket-lekhai.vercel.app"
 NODE_ENV="production"
 
 # JWT (Tối thiểu 32 ký tự)
@@ -347,13 +348,14 @@ Nếu có sửa file `schema.prisma` và tạo migration mới:
 
 ---
 
-## 💡 9. Ghi Chú & Lưu Ý
+## 💡 9. Ghi Chú & Định Hướng Phát Triển
 
 - **Thanh toán thật:** Hệ thống đang chạy PayOS ở môi trường Production. Mọi giao dịch đều trừ tiền thật.
 - **Passkeys trên Vercel:** Đảm bảo biến môi trường `WEBAUTHN_RP_ID` và `WEBAUTHN_ORIGIN` được cấu hình chính xác với domain thực tế.
 - **Trình duyệt hỗ trợ Passkeys:** Trên iOS, khuyên dùng Safari hoặc Brave để tránh lỗi API WebAuthn của Chrome.
 - **Không hỗ trợ trả sau:** Hệ thống đã loại bỏ hoàn toàn tính năng "Đặt vé trả sau" (`LATER`) để chống chiếm ghế ảo. Bắt buộc thanh toán 100% qua Ví (`WALLET`).
 - **Định hướng mở rộng (Logistics & Cargo):** Module mã hóa AES-256-GCM được thiết kế theo hướng "Extensibility by Default" (mở rộng mà không làm gián đoạn hệ thống). Các trường PII (như số điện thoại liên hệ nhận hàng/giao hàng) khi được kích hoạt ở các pha nâng cấp tiếp theo sẽ tự động được mã hóa ở tầng ứng dụng trước khi ghi xuống cơ sở dữ liệu.
+- **Kiến trúc Microservices-ready:** Hệ thống đã được quy hoạch biến môi trường `AI_SERVICE_URL` và tách biệt cấu trúc gọi hàm AI Proxy. Trong các giai đoạn phát triển tiếp theo, module AI Dynamic Pricing (FastAPI/Python) có thể được triển khai độc lập dưới dạng một Microservice mà không làm ảnh hưởng đến luồng xử lý chính của Backend Node.js.
 
 ---
 
