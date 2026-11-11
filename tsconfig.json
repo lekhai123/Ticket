@@ -7,19 +7,19 @@
     "lib": ["DOM", "DOM.Iterable", "ESNext"],
     "types": ["node"],
     "sourceMap": true,
-    "strict": false,
     "jsx": "react-jsx",
     "verbatimModuleSyntax": false,
     "isolatedModules": true,
     "moduleDetection": "auto",
     "skipLibCheck": true,
     "esModuleInterop": true,
-    "allowSyntheticDefaultImports": true
+    "allowSyntheticDefaultImports": true,
+
+    // BẬT STRICT Ở ĐÂY
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true
   },
   "include": ["**/*.ts", "**/*.tsx"],
-  "exclude": [
-    "node_modules",
-    "dist-api",
-    "frontend" //Thêm dòng này để Backend không check code Frontend
-  ]
+  "exclude": ["node_modules", "dist-api", "frontend"]
 }

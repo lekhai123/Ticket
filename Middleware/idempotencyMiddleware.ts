@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 import { redisPrimary, redisBackup } from "../Utils/redisLock";
 import type Redis from "ioredis";
+import crypto from "crypto";
 
 const getActiveRedis = (): Redis | null => {
   if (redisPrimary.status === "ready" || redisPrimary.status === "connect")
@@ -23,37 +24,63 @@ export const idempotency = (ttlSeconds: number = 86400) => {
 
     if (!idempotencyKey) return next();
 
+    // 1. Tạo Hash từ Payload (để đảm bảo cùng 1 key phải gửi cùng dữ liệu)
+    let payloadHash = "";
+    try {
+      payloadHash = crypto
+        .createHash("sha256")
+        .update(JSON.stringify(req.body || {}))
+        .digest("hex");
+    } catch {
+      payloadHash = "hash_error";
+    }
+
     const cacheKey = `idempotency:${idempotencyKey}`;
     const activeRedis = getActiveRedis();
 
     if (activeRedis) {
       try {
-        // Dùng SET NX để khóa ngay từ đầu (Chống 2 request đồng thời)
+        // 2. Khóa bằng NX, lưu kèm Hash của Payload
+        const processingValue = JSON.stringify({
+          status: "PROCESSING",
+          hash: payloadHash,
+        });
         const isLocked = await activeRedis.set(
           cacheKey,
-          "PROCESSING",
+          processingValue,
           "EX",
-          60,
+          60, // Khóa 60s
           "NX",
         );
 
         if (isLocked === null) {
-          // Nếu key đã tồn tại (không set được) -> Có request khác đang chạy hoặc đã xong
-          const cachedResponse = await activeRedis.get(cacheKey);
+          const cachedData = await activeRedis.get(cacheKey);
 
-          if (cachedResponse === "PROCESSING") {
-            res.status(409).json({
-              success: false,
-              message:
-                "Yêu cầu này đang được xử lý, vui lòng không gửi liên tục!",
-            });
-            return;
-          }
+          if (cachedData) {
+            const parsedData = JSON.parse(cachedData);
 
-          if (cachedResponse) {
-            const { statusCode, body } = JSON.parse(cachedResponse);
-            res.status(statusCode).json(body);
-            return;
+            // Nếu đang xử lý, kiểm tra xem Payload có bị đổi không
+            if (parsedData.status === "PROCESSING") {
+              if (parsedData.hash !== payloadHash) {
+                res.status(400).json({
+                  success: false,
+                  message: "Idempotency Key đã được dùng với dữ liệu khác!",
+                });
+                return;
+              }
+              res.status(409).json({
+                success: false,
+                message:
+                  "Yêu cầu này đang được xử lý, vui lòng không gửi liên tục!",
+              });
+              return;
+            }
+
+            // Nếu đã xử lý xong -> Trả lại kết quả cũ
+            if (parsedData.statusCode && parsedData.body) {
+              res.status(parsedData.statusCode).json(parsedData.body);
+              return;
+            }
           }
         }
       } catch (error: any) {
@@ -61,22 +88,23 @@ export const idempotency = (ttlSeconds: number = 86400) => {
       }
     }
 
+    // 3. Can thiệp vào hàm res.json để dọn dẹp hoặc lưu kết quả
     const originalJson = res.json.bind(res);
     res.json = (body: any) => {
-      if (res.statusCode >= 200 && res.statusCode < 300) {
-        const currentRedis = getActiveRedis();
-        if (currentRedis) {
+      const currentRedis = getActiveRedis();
+      if (currentRedis) {
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          // Thành công -> Lưu kết quả vào Redis để trả lại cho request sau
           currentRedis
             .setex(
               cacheKey,
               ttlSeconds,
               JSON.stringify({ statusCode: res.statusCode, body }),
             )
-            .catch((err) =>
-              console.warn(
-                `[IDEMPOTENCY WARNING] Lỗi ghi Redis: ${err.message}`,
-              ),
-            );
+            .catch(() => {});
+        } else if (res.statusCode >= 400) {
+          // Lỗi nghiệp vụ (400, 500) -> Xóa khóa PROCESSING để user được phép thử lại
+          currentRedis.del(cacheKey).catch(() => {});
         }
       }
       return originalJson(body);

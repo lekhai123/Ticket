@@ -6,7 +6,7 @@ import prisma from "../database/prismaClient";
 import { MailJobData, NotificationJobData, AllJobData } from "./mailQueue";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
-const fromEmail = process.env.fromEmail;
+const fromEmail = process.env.fromEmail || "security@binstudio.id.vn";
 
 const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
 const isTls = redisUrl.startsWith("rediss://");

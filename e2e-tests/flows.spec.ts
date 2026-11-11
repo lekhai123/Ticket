@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 
-const TEST_EMAIL = process.env.userTest;
-const TEST_PASSWORD = process.env.passUserTest;
+const TEST_EMAIL = process.env.TEST_EMAIL || "testuser@example.com";
+const TEST_PASSWORD = process.env.TEST_PASSWORD || "Password123!";
 
 test.describe("Luồng trải nghiệm người dùng (E2E)", () => {
   test.beforeEach(async ({ page }) => {

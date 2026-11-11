@@ -2,6 +2,15 @@ import crypto from "crypto";
 
 const AUDIT_SECRET = process.env.AUDIT_SECRET_KEY;
 
+if (!AUDIT_SECRET) {
+  throw new Error(
+    "[CONFIG ERROR] Thiếu biến môi trường AUDIT_SECRET_KEY cho AuditSigner!",
+  );
+}
+
+// Ép kiểu ở đây để TypeScript hiểu đây chắc chắn là string
+const SECRET_KEY: string = AUDIT_SECRET;
+
 export class AuditSigner {
   static generateSignature(data: any): string {
     // Sắp xếp các key một cách đệ quy để đảm bảo tính nhất quán
@@ -27,8 +36,10 @@ export class AuditSigner {
     };
 
     const sortedData = JSON.stringify(sortObject(signData));
+
+    // Đổi AUDIT_SECRET thành SECRET_KEY ở đây
     return crypto
-      .createHmac("sha256", AUDIT_SECRET)
+      .createHmac("sha256", SECRET_KEY)
       .update(sortedData)
       .digest("hex");
   }

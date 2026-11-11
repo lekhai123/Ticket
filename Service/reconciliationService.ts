@@ -2,7 +2,7 @@ import prisma from "../database/prismaClient";
 import { AIReconciliationAnalyzer } from "./aiReconciliationAnalyzer.service";
 import { sendNotificationEmail } from "../queues/mailQueue";
 import { AuditSigner } from "../Utils/auditSigner";
-
+import { Prisma } from "@prisma/client";
 export interface MismatchDetail {
   userId: number;
   walletId: number;
@@ -11,7 +11,9 @@ export interface MismatchDetail {
   difference: number;
   status: "DEBITED_AND_FROZEN" | "DEBT_GENERATED_AND_FROZEN";
 }
-
+type WalletWithUser = Prisma.WalletsGetPayload<{
+  include: { user: { select: { email: true; fullName: true } } };
+}>;
 const ACTION_SIGN: Record<string, 1 | -1> = {
   TOP_UP: 1,
   MASS_GIFT_RECEIVED: 1,
@@ -45,7 +47,8 @@ export class ReconciliationService {
 
     try {
       while (true) {
-        const wallets = await prisma.wallets.findMany({
+        // Thêm : WalletWithUser[] vào đây
+        const wallets: WalletWithUser[] = await prisma.wallets.findMany({
           take: BATCH_SIZE,
           skip: cursorId ? 1 : 0,
           cursor: cursorId ? { id: cursorId } : undefined,
