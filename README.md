@@ -63,9 +63,12 @@ Hệ thống được tổ chức theo luồng: **Client → API Gateway → Dom
 
 ## 🔐 2. Tính Năng Bảo Mật & Kiểm Soát Tài Chính (Zero-Trust)
 
-### 2.1. Xác Thực Không Mật Khẩu (Passkeys / WebAuthn) & Mã Hóa Dữ Liệu
+### 2.1. Xác Thực Không Mật Khẩu (Passkeys / WebAuthn) & Kiến Trúc Mã Hóa Mở Rộng
 
-- Hỗ trợ đăng nhập bằng Vân tay, Face ID hoặc Windows Hello kèm bộ đếm `counter` chống Replay Attack. Loại bỏ hoàn toàn rủi ro Phishing vì khóa riêng tư không rời khỏi thiết bị.
+- **Xác thực Passkeys:** Hỗ trợ đăng nhập bằng Vân tay, Face ID hoặc Windows Hello kèm bộ đếm `counter` chống Replay Attack. Khóa riêng tư (Private Key) được lưu giữ an toàn trong phần cứng thiết bị người dùng, loại bỏ triệt để nguy cơ Phishing và rò rỉ cơ sở dữ liệu xác thực.
+- **Sẵn sàng mở rộng (Application-Level Encryption - AES-256-GCM):**
+  - Mặc dù hệ thống hiện tại ưu tiên tối giản quy trình Onboarding bằng **Email OTP & Passkeys**, kiến trúc Backend và lược đồ cơ sở dữ liệu (`Users.phoneNumber`) đã được tích hợp sẵn tầng bảo mật dữ liệu nhạy cảm **ALE (Application-Level Encryption)** bằng thuật toán chuẩn quân đội **AES-256-GCM** (sử dụng 12-byte IV ngẫu nhiên và Authentication Tag 16-byte).
+  - Thiết kế này chuẩn bị sẵn nền tảng để hệ thống mở rộng sang phân hệ **Vận chuyển & Ký gửi Hàng hóa (Logistics / Cargo Delivery)** hoặc tích hợp SMS OTP định danh trong tương lai mà không cần tái cấu trúc (refactor) cơ sở dữ liệu hay vi phạm các tiêu chuẩn bảo mật dữ liệu cá nhân.
 
 ### 2.2. JWT Hiện Đại với Refresh Token Rotation & Revocation
 
@@ -350,6 +353,7 @@ Nếu có sửa file `schema.prisma` và tạo migration mới:
 - **Passkeys trên Vercel:** Đảm bảo biến môi trường `WEBAUTHN_RP_ID` và `WEBAUTHN_ORIGIN` được cấu hình chính xác với domain thực tế.
 - **Trình duyệt hỗ trợ Passkeys:** Trên iOS, khuyên dùng Safari hoặc Brave để tránh lỗi API WebAuthn của Chrome.
 - **Không hỗ trợ trả sau:** Hệ thống đã loại bỏ hoàn toàn tính năng "Đặt vé trả sau" (`LATER`) để chống chiếm ghế ảo. Bắt buộc thanh toán 100% qua Ví (`WALLET`).
+- **Định hướng mở rộng (Logistics & Cargo):** Module mã hóa AES-256-GCM được thiết kế theo hướng "Extensibility by Default" (mở rộng mà không làm gián đoạn hệ thống). Các trường PII (như số điện thoại liên hệ nhận hàng/giao hàng) khi được kích hoạt ở các pha nâng cấp tiếp theo sẽ tự động được mã hóa ở tầng ứng dụng trước khi ghi xuống cơ sở dữ liệu.
 
 ---
 

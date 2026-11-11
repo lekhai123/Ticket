@@ -11,15 +11,10 @@ export const loginSchema = z.object({
 
 export const registerSchema = z.object({
   body: z.object({
-    fullName: z
-      .string({ message: "Họ tên không được bỏ trống" })
-      .min(2, "Họ tên phải có ít nhất 2 ký tự"),
-    email: z
-      .string({ message: "Email không được bỏ trống" })
-      .email("Email không đúng định dạng"),
-    password: z
-      .string({ message: "Mật khẩu không được bỏ trống" })
-      .min(6, "Mật khẩu phải có ít nhất 6 ký tự"),
+    fullName: z.string().min(2, "Họ tên phải có ít nhất 2 ký tự"),
+    email: z.string().email("Email không đúng định dạng"),
+    password: z.string().min(6, "Mật khẩu phải có ít nhất 6 ký tự"),
+    phoneNumber: z.string().optional(),
   }),
 });
 
@@ -45,6 +40,7 @@ export const completeRegisterSchema = z.object({
     email: z.string().trim().email("Email không hợp lệ"),
     password: z.string().min(6, "Mật khẩu phải từ 6 ký tự"),
     otp: z.string().trim().length(6, "Mã OTP phải đúng 6 ký tự"),
+    phoneNumber: z.string().optional(),
   }),
 });
 
