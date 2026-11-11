@@ -85,39 +85,3 @@ export const idempotency = (ttlSeconds: number = 86400) => {
     next();
   };
 };
-
-export const cacheResponse = (ttlSeconds: number = 60) => {
-  return async (req: Request, res: Response, next: NextFunction) => {
-    const cacheKey = `route_cache:${req.originalUrl}`;
-    const activeRedis = getActiveRedis();
-
-    if (activeRedis) {
-      try {
-        const cached = await activeRedis.get(cacheKey);
-        if (cached) {
-          const { statusCode, body } = JSON.parse(cached);
-          return res.status(statusCode).json(body);
-        }
-      } catch (err) {}
-    }
-
-    const originalJson = res.json.bind(res);
-    res.json = (body: any) => {
-      if (res.statusCode >= 200 && res.statusCode < 300) {
-        const currentRedis = getActiveRedis();
-        if (currentRedis) {
-          currentRedis
-            .setex(
-              cacheKey,
-              ttlSeconds,
-              JSON.stringify({ statusCode: res.statusCode, body }),
-            )
-            .catch(() => {});
-        }
-      }
-      return originalJson(body);
-    };
-
-    next();
-  };
-};

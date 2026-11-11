@@ -23,10 +23,16 @@ router.delete(
   BookingController.cancelBooking,
 );
 
-router.get("/my-tickets", authenticateToken, BookingController.getUserTickets);
+router.get(
+  "/my-tickets",
+  authenticateToken,
+  rateLimit(100, 60),
+  BookingController.getUserTickets,
+);
 router.get(
   "/user/:userId",
   authenticateToken,
+  rateLimit(100, 60),
   BookingController.getUserTickets,
 );
 
