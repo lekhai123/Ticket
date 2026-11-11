@@ -24,18 +24,40 @@ app.set("trust proxy", 1);
 
 app.use(helmet());
 app.disable("x-powered-by");
+const rawOrigins = [
+  "http://localhost:5173",
+  "https://ticket-lekhai.vercel.app", // Hardcode dự phòng
+  ENV.FRONTEND_URL,
+];
 
-const allowedOrigins = ["http://localhost:5173", ENV.FRONTEND_URL].filter(
-  Boolean,
-);
+// Làm sạch URL: Xóa khoảng trắng thừa, xóa dấu / ở cuối
+const allowedOrigins = rawOrigins
+  .filter(Boolean)
+  .map((url) => url!.trim().replace(/\/$/, ""));
 
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Chỉ cho phép đúng domain trong mảng, bỏ qua các domain *.vercel.app khác
-      if (!origin || allowedOrigins.includes(origin)) {
+      // 1. Cho phép request không có origin (Postman, Webhook, Server-to-Server)
+      if (!origin) return callback(null, true);
+
+      // 2. Làm sạch origin từ client
+      const cleanOrigin = origin.trim().replace(/\/$/, "");
+
+      // 3. In log để debug trên Vercel
+      console.log(
+        `[CORS CHECK] Client: "${cleanOrigin}" | Allowed: ${allowedOrigins.join(", ")}`,
+      );
+
+      // 4. Cho phép nếu khớp mảng HOẶC là link preview của Vercel (*.vercel.app)
+      if (
+        allowedOrigins.includes(cleanOrigin) ||
+        /^https:\/\/.*\.vercel\.app$/.test(cleanOrigin)
+      ) {
         return callback(null, true);
       }
+
+      console.error(`[CORS BLOCKED] Từ chối Origin: "${cleanOrigin}"`);
       return callback(new Error("Not allowed by CORS"));
     },
     credentials: true,
@@ -50,6 +72,9 @@ app.use(
     ],
   }),
 );
+
+// Fix lỗi Preflight (OPTIONS) của Express 5
+app.options(/.*/, cors());
 
 app.use(express.json());
 app.use(cookieParser());
