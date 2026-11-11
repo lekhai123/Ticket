@@ -13,8 +13,11 @@ import {
 
 const router = Router();
 
-router.get("/system-status", AdminController.getPublicHealth);
-
+router.get(
+  "/system-status",
+  rateLimit(120, 60), // Cho phép 120 req/phút/IP (2 req/s) là quá thoải mái cho user thật
+  AdminController.getPublicHealth,
+);
 // BỎ cacheResponse: service đã cache nội bộ + có invalidate khi mutation.
 // Middleware cache ở đây chỉ tạo ra lớp stale không bao giờ được dọn.
 router.get("/", rateLimit(200, 60), TripController.getAllTrips);

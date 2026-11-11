@@ -3,6 +3,7 @@ import { AdminService } from "../Service/adminService";
 import prisma from "../database/prismaClient";
 import { TicketService } from "../Service/ticketService";
 import { BookingService } from "../Service/bookingService";
+import { MultiLevelCache } from "../Service/cacheService";
 
 const catchAsync =
   (fn: (req: Request, res: Response, next: NextFunction) => Promise<any>) =>
@@ -187,21 +188,36 @@ export class AdminController {
     });
   });
   static getPublicHealth = catchAsync(async (req: Request, res: Response) => {
+    // 1. Kiểm tra cache của Public (TTL 30s) để chặn spam đốt quota
+    const cacheKey = "public:system_status";
+    const cachedStatus = await MultiLevelCache.get<any>(cacheKey);
+
+    if (cachedStatus) {
+      return res.status(200).json({ success: true, data: cachedStatus });
+    }
+
+    // 2. Nếu Cache Miss, mới gọi Service (tốn 5 external API calls)
     const fullHealth = await AdminService.getHealthStatus();
 
+    // 3. Logic High Availability: Chỉ cần 1 trong 2 (Primary HOẶC Backup) sống là OK
     const publicStatus = {
       database: fullHealth.database.status === "HEALTHY",
-      redis: fullHealth.redis.primary.status === "HEALTHY",
-      cloudinary: fullHealth.cloudinary.primary.status === "HEALTHY",
-      ai: fullHealth.gemini.primaryKey.status === "HEALTHY",
+      redis:
+        fullHealth.redis.primary.status === "HEALTHY" ||
+        fullHealth.redis.backup.status === "HEALTHY",
+      cloudinary:
+        fullHealth.cloudinary.primary.status === "HEALTHY" ||
+        fullHealth.cloudinary.backup.status === "HEALTHY",
+      ai:
+        fullHealth.gemini.primaryKey.status === "HEALTHY" ||
+        fullHealth.gemini.backupKey.status === "HEALTHY",
     };
 
-    res.status(200).json({
-      success: true,
-      data: { status: "ok" }, // hoặc chỉ trả boolean tổng
-    });
-  });
+    // 4. Lưu cache 30 giây
+    await MultiLevelCache.set(cacheKey, publicStatus, 30);
 
+    res.status(200).json({ success: true, data: publicStatus });
+  });
   static unlockWallet = catchAsync(async (req: Request, res: Response) => {
     const { userId } = req.params;
 

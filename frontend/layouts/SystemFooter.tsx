@@ -12,8 +12,9 @@ export default function SystemFooter() {
       const res = await axiosClient.get("/trips/system-status");
       return res.data.data;
     },
-    refetchInterval: 60000,
-    staleTime: 60000,
+    refetchInterval: 300000, // 5 phút mới gọi lại 1 lần
+    refetchIntervalInBackground: false, // Không gọi ngầm khi user thu nhỏ trình duyệt
+    staleTime: 300000, // 5 phút
   });
 
   const StatusDot = ({ isOnline, label, icon: Icon }: any) => (
