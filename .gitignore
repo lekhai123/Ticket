@@ -9,3 +9,7 @@ e2e-tests/playwright-report/
 
 #dùng để sinh vector cho chuyến xe
 /scripts
+
+# Frontend build output
+frontend/dist/
+dist/

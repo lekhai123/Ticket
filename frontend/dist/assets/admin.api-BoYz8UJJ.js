@@ -1,1 +1,0 @@
-import{e as t}from"./index-bUZi1ArA.js";const r={revokeBatch:async a=>(await t.post("/admin/revoke-batch",a)).data,runReconciliation:async()=>(await t.post("/admin/reconciliation/trigger")).data,massGift:async a=>(await t.post("/admin/mass-gift",a)).data,unlockWallet:async a=>(await t.patch(`/admin/wallets/${a}/unlock`)).data};export{r as a};
