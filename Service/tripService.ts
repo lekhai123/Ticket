@@ -291,7 +291,7 @@ export class TripService {
       cleanPrompt.includes("tất cả") ||
       cleanPrompt.includes("danh sách")
     ) {
-      return await this.getAllTripsLogic();
+      return await this.getAllTripsLogic(1, limit);
     }
 
     const now = new Date();
@@ -322,13 +322,17 @@ export class TripService {
       startMorning.setHours(0, 0, 0, 0);
       const endMorning = new Date(now);
       endMorning.setHours(11, 59, 59, 999);
-      const searchStart =
-        now > endMorning
-          ? new Date(now.setDate(now.getDate() + 1))
-          : now > startMorning
-            ? now
-            : startMorning;
-      searchStart.setHours(0, 0, 0, 0);
+
+      let searchStart: Date;
+      if (now > endMorning) {
+        // Đã qua 12h → tìm sáng mai
+        searchStart = new Date(now);
+        searchStart.setDate(searchStart.getDate() + 1);
+        searchStart.setHours(0, 0, 0, 0);
+      } else {
+        // Đang trong buổi sáng (00:00 – 11:59) → tìm từ "bây giờ" đến 11:59
+        searchStart = now;
+      }
 
       timeConditionPrisma = { departureAt: { gt: searchStart } };
       timeConditionSQL = `AND EXTRACT(HOUR FROM "departureAt") < 12`;

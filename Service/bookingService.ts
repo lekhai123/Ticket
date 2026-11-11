@@ -632,7 +632,15 @@ export class BookingService {
         }
       }
     }
-
+    const affectedTripIds = Array.from(new Set(tickets.map((t) => t.tripId)));
+    void Promise.all([
+      MultiLevelCache.invalidate("trips:all:active*"),
+      ...affectedTripIds.map((tripId) =>
+        MultiLevelCache.invalidate(`trips:detail:${tripId}`),
+      ),
+    ]).catch((err) =>
+      console.warn("[BULK_REVOKE] cache invalidation:", err?.message),
+    );
     return { success: true, count: tickets.length };
   }
 }
