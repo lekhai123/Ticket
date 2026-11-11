@@ -298,12 +298,44 @@ Vì gói Hobby của Vercel giới hạn Cron Job 1 lần/ngày, hệ thống s�
 
 ---
 
-## 💡 8. Ghi Chú & Lưu Ý
+## 🛡️ 8. Quy Trình Pre-flight (Đảm bảo Deploy 100% Thành Công)
+
+Vercel build lỗi thường do 2 nguyên nhân: **Lỗi code TypeScript (Frontend/Backend)** hoặc **Lỗi cấu hình (vercel.json, biến môi trường)**. Trước khi `git push`, bạn **BẮT BUỘC** phải thực hiện checklist sau:
+
+### Bước 1: Chạy kiểm tra tự động (Local Check)
+
+Chạy lệnh sau ở Terminal dưới máy bạn:
+
+```bash
+npm run check-local
+```
+
+_(Script này sẽ tự động: Generate Prisma -> Check lỗi TypeScript Backend -> Chạy toàn bộ Test -> Build thử Frontend. Nếu Terminal báo xanh hết, tức là code của bạn 100% không bị lỗi build)._
+
+### Bước 2: Kiểm tra file cấu hình (Manual Check)
+
+Script `check-local` không thể bắt được lỗi của các file cấu hình tĩnh. Bạn phải tự mở 2 file sau ra xem lại bằng mắt:
+
+1. **`vercel.json`:** Đảm bảo cú pháp JSON hợp lệ (không thừa dấu phẩy). Đảm bảo đường dẫn `destination` trỏ đúng file Serverless (ví dụ `/api/index.ts`).
+2. **`.env.example` và Vercel Dashboard:** Kiểm tra xem bạn có vừa thêm biến môi trường mới nào vào code không. Nếu có, phải lên Vercel Settings -> Environment Variables thêm biến đó trước khi deploy.
+
+### Bước 3: Quy trình Nâng cấp Database (Không Downtime)
+
+Nếu lần deploy này bạn có sửa file `schema.prisma` (thêm cột, bảng):
+
+1. Lên web Admin, bấm **Bật Bảo Trì Khẩn Cấp**.
+2. Push code lên Vercel.
+3. Chờ Vercel build xong (Ready).
+4. Ở máy local, chạy `npx prisma db push` để cập nhật Database Production.
+5. Lên web Admin, bấm **Tắt Bảo Trì**.
+
+---
+
+## 💡 9. Ghi Chú & Lưu Ý
 
 - **Thanh toán thật:** Hệ thống đang chạy PayOS ở môi trường Production. Mọi giao dịch đều trừ tiền thật.
 - **Passkeys trên Vercel:** Đảm bảo biến môi trường `WEBAUTHN_RP_ID` và `WEBAUTHN_ORIGIN` được cấu hình chính xác với domain thực tế.
 - **Trình duyệt hỗ trợ Passkeys:** Trên iOS, khuyên dùng Safari hoặc Brave để tránh lỗi API WebAuthn của Chrome.
-- **Trước khi Deploy:** Chạy lệnh `npm run check-local` để kiểm tra lỗi TypeScript và Test. Đảm bảo tỷ lệ deploy thành công 100%.
 - **Bảo trì khẩn cấp:** Khi cần nâng cấp Database/PayOS, hãy vào `Admin -> System Health` bấm nút **Bật Bảo Trì Khẩn Cấp** để chặn giao dịch, tránh lỗi dòng tiền.
 
 ---
