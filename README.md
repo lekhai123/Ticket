@@ -5,7 +5,7 @@ NexusTicket là hệ thống đặt vé xe trực tuyến toàn diện, được
 - **Backend:** Node.js, Express, TypeScript, Prisma ORM, PostgreSQL.
 - **Frontend:** React, Vite, TailwindCSS, React Query.
 - **Hạ tầng & Tiện ích:** Vercel (API & Daemons), Docker, Dual Redis Cluster (HA), Multi-Level Cache, BullMQ, PayOS Payment Gateway, Cloudinary.
-- **Bảo mật:** Passkeys (WebAuthn), JWT Rotation & Revocation, HMAC Audit Logs, Rate Limiting.
+- **Bảo mật & Chịu lỗi:** Passkeys (WebAuthn), JWT Rotation & Revocation, HMAC Audit Logs, Rate Limiting, Helmet, Circuit Breaker (Opossum).
 - **Kiểm thử:** Jest, Playwright (E2E), k6 (Load Test).
 
 ---
@@ -35,7 +35,7 @@ Hệ thống được tổ chức theo luồng: **Client → API Gateway → Dom
    ┌─────────┼──────────┬──────────┬──────────┬─────────┐
    ▼         ▼          ▼          ▼          ▼         ▼
 [Auth]    [Trips]   [Booking]   [Payments] [Wallets]  [Admin]
-(Pipeline Middleware: Auth JWT, Idempotency, IP Guard, Zod Validator, Rate Limit)
+(Pipeline Middleware: Auth JWT, Idempotency, IP Guard, Zod Validator, Rate Limit, Maintenance)
              │
              ▼
 ════════════════════════ DOMAIN SERVICES ═══════════════════════
@@ -45,7 +45,7 @@ Hệ thống được tổ chức theo luồng: **Client → API Gateway → Dom
    ├── BookingService (Bulk Booking + Redis Lock + DB Lock)
    ├── PaymentService (PayOS Integration & Webhook HMAC Verify)
    ├── WalletService (Debt/Balance Guard & isLocked Check)
-   ├── AI Proxy Service (Gemini Multi-Key Failover)
+   ├── AI Proxy Service (Gemini Multi-Key Failover + Circuit Breaker)
    ├── TicketService (AI Anomaly Detection Scan)
    └── ReconciliationService (Auto-Balancing & Audit Logs)
              │
@@ -81,6 +81,10 @@ Hệ thống được tổ chức theo luồng: **Client → API Gateway → Dom
 
 - Bảng `AuditLog` được bảo vệ bằng **chữ ký số HMAC-SHA256**. Nếu có bất kỳ ai (kể cả Admin) can thiệp sửa đổi số tiền trong DB, chữ ký sẽ không còn khớp, hệ thống AIOps sẽ phát hiện và đưa ra cảnh báo đỏ.
 
+### 2.5. Bảo Mật Header với Helmet
+
+- Tích hợp `helmet` để giấu header `X-Powered-By`, chặn các lỗ hổng XSS cơ bản và bảo vệ thông tin máy chủ khỏi các cuộc tấn công dò quét.
+
 ---
 
 ## ⚡ 3. Các Tính Năng Kỹ Thuật Cốt Lõi
@@ -89,6 +93,17 @@ Hệ thống được tổ chức theo luồng: **Client → API Gateway → Dom
 - **Multi-Level Cache:** Kết hợp LRU Cache (L1 - RAM) và Redis (L2) giúp truy vấn danh mục chuyến xe với độ trễ cực thấp.
 - **Chống Race Condition:** Sử dụng **Redis Distributed Lock** kết hợp **Postgres Advisory Lock** trong `prisma.$transaction` đảm bảo không xảy ra tình trạng overselling (bán trùng ghế).
 - **Tìm kiếm AI (Hybrid Search):** Kết hợp tìm kiếm từ khóa (ILIKE) và tìm kiếm ngữ nghĩa (Gemini Vector) với cơ chế Fallback thông minh (tự động bỏ lọc thời gian nếu không có kết quả).
+
+### 3.5. Cầu Dao Điện (Circuit Breaker) & Chịu Lỗi
+
+- **Circuit Breaker (Opossum):** Tích hợp cho các dịch vụ bên thứ 3 (Gemini AI, PayOS). Nếu dịch vụ sập liên tục (lỗi 503), mạch sẽ ngắt (Open) và trả về Fallback ngay lập tức (0ms) thay vì bắt khách hàng chờ 20s. Sau 1 phút, mạch tự động đóng lại (Half-Open) để thử kết nối.
+- **Graceful Degradation:** Nếu AI sập, tính năng tìm kiếm tự động chuyển về tìm kiếm Text (ILIKE) cơ bản. Nếu Webhook PayOS đến muộn, hệ thống vẫn xử lý Idempotency (chống cộng tiền 2 lần).
+
+### 3.6. Chế Độ Bảo Trì Khẩn Cấp (Emergency Maintenance)
+
+- Admin có thể bật/tắt chế độ bảo trì 1-Click từ trang **System Health**.
+- Khi bật, hệ thống lập tức chặn mọi API Mua vé/Nạp tiền (trả về lỗi 503) để đảm bảo an toàn dữ liệu trong lúc nâng cấp Database.
+- **Đặc biệt:** Webhook PayOS vẫn được xuyên qua để cộng tiền nếu khách đã lỡ chuyển khoản.
 
 ---
 
@@ -165,7 +180,7 @@ Hệ thống đã được kiểm thử tải trực tiếp trên môi trường
 ├── e2e-tests/                    # Bộ test E2E với Playwright
 ├── frontend/                     # Giao diện người dùng (React + Vite)
 ├── jobs/                         # Tiến trình chạy ngầm (Cron đối soát, quét vé)
-├── Middleware/                   # Pipeline bảo mật (Auth, Rate Limit, Validate)
+├── Middleware/                   # Pipeline bảo mật (Auth, Rate Limit, Maintenance...)
 ├── prisma/                       # Schema và migrations
 ├── queues/                       # Cấu hình BullMQ & MailWorker (chạy trên Daemon)
 ├── Router/                       # Khai báo các tuyến API
@@ -176,6 +191,7 @@ Hệ thống đã được kiểm thử tải trực tiếp trên môi trường
 ├── Validation/                   # Schema Zod
 ├── Dockerfile                    # Build riêng cho BullMQ Worker (Vercel Daemons)
 ├── load-test.js                  # Script kiểm thử tải (k6)
+├── architecture.png              # Ảnh sơ đồ kiến trúc hệ thống
 ├── app.ts                        # Cấu hình Express App
 ├── server.ts                     # Khởi tạo Express Server
 └── vercel.json                   # Cấu hình Deploy Vercel
@@ -235,8 +251,8 @@ CRON_SECRET="YOUR_CRON_SECRET"
 AUDIT_SECRET_KEY="YOUR_AUDIT_SECRET_HMAC_KEY"
 
 # Cấu hình tài khoản thật cho E2E Test (Playwright)
-userTest="abcd@gmail.com"
-passUserTesT="abcd123@@"
+USER_TEST="abcd@gmail.com"
+PASS_USER_TEST="abcd123@@"
 ```
 
 ---
@@ -287,6 +303,8 @@ Vì gói Hobby của Vercel giới hạn Cron Job 1 lần/ngày, hệ thống s�
 - **Thanh toán thật:** Hệ thống đang chạy PayOS ở môi trường Production. Mọi giao dịch đều trừ tiền thật.
 - **Passkeys trên Vercel:** Đảm bảo biến môi trường `WEBAUTHN_RP_ID` và `WEBAUTHN_ORIGIN` được cấu hình chính xác với domain thực tế.
 - **Trình duyệt hỗ trợ Passkeys:** Trên iOS, khuyên dùng Safari hoặc Brave để tránh lỗi API WebAuthn của Chrome.
+- **Trước khi Deploy:** Chạy lệnh `npm run check-local` để kiểm tra lỗi TypeScript và Test. Đảm bảo tỷ lệ deploy thành công 100%.
+- **Bảo trì khẩn cấp:** Khi cần nâng cấp Database/PayOS, hãy vào `Admin -> System Health` bấm nút **Bật Bảo Trì Khẩn Cấp** để chặn giao dịch, tránh lỗi dòng tiền.
 
 ---
 
