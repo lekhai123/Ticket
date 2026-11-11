@@ -79,8 +79,8 @@ export class BookingController {
         .json({ success: false, message: "Mã người dùng không hợp lệ!" });
     }
 
-    const page = req.query.page ? Number(req.query.page) : 1;
-    const limit = req.query.limit ? Number(req.query.limit) : 5;
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 5));
     const skip = (page - 1) * limit;
 
     const [tickets, total] = await prisma.$transaction([

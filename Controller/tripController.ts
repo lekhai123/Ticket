@@ -51,6 +51,11 @@ export class TripController {
   static getTripById = catchAsync(async (req: Request, res: Response) => {
     const id = Number(req.params.id);
     const trip = await TripService.getTripByIdLogic(id);
+    if (!trip) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Không tìm thấy chuyến xe!" });
+    }
     res.status(200).json({ success: true, data: trip });
   });
 

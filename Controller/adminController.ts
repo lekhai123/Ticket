@@ -70,7 +70,7 @@ export class AdminController {
         ? String(reason).trim()
         : "Hệ thống thu hồi vé lỗi giá 0đ";
 
-      // 2. Gọi hàm thu hồi hàng loạt 
+      // 2. Gọi hàm thu hồi hàng loạt
       // Hàm này tự động gom nhóm theo User để hoàn tiền và gửi mail
       const result = await BookingService.adminRevokeMultipleTickets(
         ticketIds,
@@ -196,7 +196,10 @@ export class AdminController {
       ai: fullHealth.gemini.primaryKey.status === "HEALTHY",
     };
 
-    res.status(200).json({ success: true, data: publicStatus });
+    res.status(200).json({
+      success: true,
+      data: { status: "ok" }, // hoặc chỉ trả boolean tổng
+    });
   });
 
   static unlockWallet = catchAsync(async (req: Request, res: Response) => {
