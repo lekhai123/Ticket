@@ -80,21 +80,30 @@ export class PaymentService {
       const amountPaid = Number(data.amount);
 
       await prisma.$transaction(async (tx) => {
-        // Dùng updateMany để khóa giao dịch, chống webhook gọi 2 lần
-        const updated = await tx.paymentTransaction.updateMany({
-          where: { orderCode, status: "PENDING" }, // Chỉ update nếu đang chờ
-          data: { status: "SUCCESS" },
-        });
-
-        if (updated.count === 0) return; // Đã được xử lý bởi webhook trước đó
-
+        //Lấy transaction ra kiểm tra trước
         const transaction = await tx.paymentTransaction.findUnique({
           where: { orderCode },
         });
-        if (!transaction || amountPaid < Number(transaction.amount)) {
-          // Nếu thiếu tiền thì đánh dấu thất bại (nhưng vẫn giữ status SUCCESS ở trên hoặc xử lý riêng tùy logic)
+
+        // Nếu không tìm thấy hoặc không phải PENDING thì bỏ qua
+        if (!transaction || transaction.status !== "PENDING") return;
+
+        // Nếu trả thiếu tiền -> Đánh dấu FAILED
+        if (amountPaid < Number(transaction.amount)) {
+          await tx.paymentTransaction.updateMany({
+            where: { orderCode, status: "PENDING" },
+            data: { status: "FAILED" },
+          });
           return;
         }
+
+        // Nếu đủ tiền -> Atomic update sang SUCCESS
+        const updated = await tx.paymentTransaction.updateMany({
+          where: { orderCode, status: "PENDING" },
+          data: { status: "SUCCESS" },
+        });
+
+        if (updated.count === 0) return;
 
         // Cộng tiền vào ví
         const updatedWallet = await tx.wallets.update({

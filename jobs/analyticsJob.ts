@@ -2,11 +2,11 @@ import cron from "node-cron";
 import prisma from "../database/prismaClient";
 
 export const initAnalyticsCron = () => {
-  // Cứ mỗi 10 phút, làm mới View 1 lần
-  cron.schedule("*/10 * * * *", async () => {
+  cron.schedule("*/15 * * * *", async () => {
     try {
+      // Thêm CONCURRENTLY để không khóa bảng
       await prisma.$executeRawUnsafe(
-        `REFRESH MATERIALIZED VIEW revenue_stats;`,
+        `REFRESH MATERIALIZED VIEW CONCURRENTLY revenue_stats;`,
       );
       console.log("[CRON] Đã làm mới bảng thống kê doanh thu.");
     } catch (error) {
