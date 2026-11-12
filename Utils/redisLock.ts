@@ -101,7 +101,12 @@ export class RedisLock {
       results[0].status === "fulfilled" && Number(results[0].value) === 1;
 
     if (!primaryOk) {
-      // Primary fail nhưng backup lỡ acquire được → xóa backup để tránh lock rác
+      // NẾU LỖI MẠNG (REDIS CHẾT) -> NÉM LỖI ĐỂ BOOKING SERVICE BIẾT ĐỂ FALLBACK
+      if (results[0].status === "rejected") {
+        throw new Error(`[REDIS DOWN] ${results[0].reason}`);
+      }
+
+      // Nếu Primary vẫn sống nhưng trả về 0 -> Ghế đang bị lock -> Trả về null
       if (
         clients.length === 2 &&
         results[1].status === "fulfilled" &&
@@ -111,7 +116,6 @@ export class RedisLock {
       }
       return null;
     }
-
     // Primary OK — kiểm tra backup nếu có
     if (clients.length === 2) {
       const backupResult = results[1];
@@ -145,12 +149,21 @@ export class RedisLock {
    * Trả true nếu ít nhất primary xóa thành công.
    */
   static async release(key: string, lockToken: string): Promise<boolean> {
-    const clients = this.targets();
-
-    const results = await Promise.allSettled(
-      clients.map((c) => c.eval(RELEASE_LUA, 1, key, lockToken)),
-    );
-
-    return results[0].status === "fulfilled" && Number(results[0].value) === 1;
+    try {
+      const clients = this.targets();
+      const results = await Promise.allSettled(
+        clients.map((c) => c.eval(RELEASE_LUA, 1, key, lockToken)),
+      );
+      return (
+        results[0].status === "fulfilled" && Number(results[0].value) === 1
+      );
+    } catch (error: any) {
+      // NẾU REDIS SẬP, CHỈ LOG CẢNH BÁO, KHÔNG NÉM LỖI RA NGOÀI
+      console.warn(
+        `[REDIS LOCK] Không thể release lock (Redis sập):`,
+        error.message,
+      );
+      return false;
+    }
   }
 }

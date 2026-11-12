@@ -15,21 +15,36 @@ export class BookingService {
   ) {
     const t0 = Date.now();
     const lockKey = `lock:trip:${tripId}:seat:${seatNumber}`;
-    const lockToken = await RedisLock.acquire(lockKey, 30);
-    const t1 = Date.now();
 
-    if (!lockToken) {
-      const error: any = new Error(
-        `Ghế số ${seatNumber} đang có người khác thao tác chọn.`,
+    let lockToken: string | null = null;
+
+    try {
+      lockToken = await RedisLock.acquire(lockKey, 30);
+      if (!lockToken) {
+        // Nếu Redis sống nhưng trả về null -> Ghế đang bị lock bởi người khác
+        const error: any = new Error(
+          `Ghế số ${seatNumber} đang có người khác thao tác chọn.`,
+        );
+        error.statusCode = 409;
+        throw error;
+      }
+    } catch (redisError: any) {
+      // Nếu có statusCode 409 -> Đây là lỗi tranh chấp ghế -> Ném ra ngoài
+      if (redisError.statusCode === 409) throw redisError;
+
+      // NẾU REDIS CHẾT: Bỏ qua, đi tiếp vào DB Lock
+      console.warn(
+        `[GRACEFUL DEGRADATION] Redis sập. Bỏ qua Redis Lock cho ghế ${seatNumber}, chuyển sang dùng Postgres Lock!`,
       );
-      error.statusCode = 409;
-      throw error;
     }
+
+    const t1 = Date.now();
 
     let result: any;
     try {
       result = await prisma.$transaction(
         async (tx) => {
+          // Lớp bảo vệ 2: Postgres Advisory Lock (Luôn chạy)
           await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`seat:${tripId}:${seatNumber}`}))::text`;
           const existingTicket = await tx.tickets.findFirst({
             where: {
@@ -115,7 +130,10 @@ export class BookingService {
         { timeout: 15000 },
       );
     } finally {
-      await RedisLock.release(lockKey, lockToken);
+      // Chỉ release nếu Redis lock đã được acquire thành công
+      if (lockToken) {
+        await RedisLock.release(lockKey, lockToken);
+      }
     }
     const t2 = Date.now();
 
@@ -164,21 +182,36 @@ export class BookingService {
 
     const sortedSeats = [...seatNumbers].sort((a, b) => a - b);
     const acquiredLocks: { key: string; token: string }[] = [];
+    let isRedisDown = false;
 
     try {
       for (const seat of sortedSeats) {
+        if (isRedisDown) break; // Nếu Redis đã sập, bỏ qua lock các ghế còn lại
+
         const lockKey = `lock:trip:${tripId}:seat:${seat}`;
-        const lockToken = await RedisLock.acquire(lockKey, 30);
-        if (!lockToken) {
-          const error: any = new Error(
-            `Ghế số ${seat} đang có người khác thao tác, vui lòng thử lại!`,
+
+        try {
+          const lockToken = await RedisLock.acquire(lockKey, 30);
+          if (!lockToken) {
+            const error: any = new Error(
+              `Ghế số ${seat} đang có người khác thao tác, vui lòng thử lại!`,
+            );
+            error.statusCode = 409;
+            throw error;
+          }
+          acquiredLocks.push({ key: lockKey, token: lockToken });
+        } catch (redisError: any) {
+          if (redisError.statusCode === 409) throw redisError;
+
+          // NẾU REDIS CHẾT: Bật cờ báo hiệu và dừng xin lock
+          console.warn(
+            `[GRACEFUL DEGRADATION] Redis sập. Bỏ qua Redis Lock, chuyển sang dùng Postgres Lock!`,
           );
-          error.statusCode = 409;
-          throw error;
+          isRedisDown = true;
         }
-        acquiredLocks.push({ key: lockKey, token: lockToken });
       }
     } catch (err) {
+      // Nếu có lỗi tranh chấp, phải nhả các lock đã giữ trước đó
       for (const lock of acquiredLocks) {
         await RedisLock.release(lock.key, lock.token);
       }
@@ -325,7 +358,6 @@ export class BookingService {
     );
     return resultTickets;
   }
-
   static async adminRevokeTicket(
     ticketId: number,
     adminUserId: number,
