@@ -113,9 +113,24 @@ Hệ thống được tổ chức theo luồng: **Client → API Gateway → Dom
 
 ### 3.6. Chế Độ Bảo Trì Khẩn Cấp (Emergency Maintenance)
 
-- Admin có thể bật/tắt chế độ bảo trì 1-Click từ trang **System Health** (tự động mở lại sau 15 phút).
-- Khi bật, hệ thống chặn mọi thao tác ghi/giao dịch (`POST`/`PUT`/`PATCH`/`DELETE` trả về lỗi `503`), nhưng vẫn cho phép các truy vấn chỉ đọc (`GET`) và làm mới phiên đăng nhập để khách hàng xem được vé và số dư ví.
-- **Đặc biệt:** Webhook PayOS vẫn được xuyên qua để cộng tiền nếu khách đã lỡ chuyển khoản.
+Hệ thống cung cấp 2 cấp độ bảo trì để đối phó với mọi tình huống sự cố:
+
+1. **Bảo trì Cấp độ 1 (Qua Web Admin):** Admin có thể bật/tắt 1-Click từ trang **System Health** (tự động mở lại sau 15 phút).
+   - Khi bật, hệ thống chặn mọi thao tác ghi/giao dịch (`POST`/`PUT`/`PATCH`/`DELETE` trả về lỗi `503`), nhưng vẫn cho phép các truy vấn chỉ đọc (`GET`) và làm mới phiên đăng nhập.
+   - **Đặc biệt:** Webhook PayOS vẫn được xuyên qua để cộng tiền nếu khách đã lỡ chuyển khoản.
+2. **Bảo trì Cấp độ 2 (Kill Switch qua Vercel - Khi Redis sập hoàn toàn):** Nếu Redis chết hoặc hết hạn mức (Limit), Admin không thể bật bảo trì từ Web. Khi đó, sử dụng tính năng **Environment Variable** trên Vercel.
+   - **Cách làm:** Vào Vercel Dashboard -> Settings -> Environment Variables -> Thêm biến `FORCE_MAINTENANCE = "true"` -> Bấm **Redeploy**.
+   - **Kết quả:** Hệ thống lập tức bật bảo trì toàn diện mà không cần quan tâm đến trạng thái của Redis.
+
+### 3.7. Kịch Bản Chịu Lỗi Khi Redis Sập / Hết Hạn Mức (Graceful Degradation)
+
+Redis được sử dụng làm "Lớp Gia tốc" (Accelerator) chứ không phải là "Điểm chết duy nhất" (Single Point of Failure). Khi Redis sập hoàn toàn, hệ thống vẫn đảm bảo các nghiệp vụ cốt lõi hoạt động nhờ cơ chế Fallback:
+
+- **Đặt vé (Booking):** Nếu `RedisLock` thất bại (do mất kết nối), hệ thống ghi log cảnh báo `[GRACEFUL DEGRADATION]` và tự động lùi về sử dụng **Postgres Advisory Lock**. Khách hàng vẫn mua vé thành công (tốc độ chậm hơn một chút) và tuyệt đối không xảy ra bán trùng vé.
+- **Chống Spam (Rate Limit):** Tự động chuyển sang bộ đếm **In-Memory (RAM)** dự phòng. Các API quan trọng vẫn được bảo vệ, hệ thống không bị tấn công DDoS tầng ứng dụng.
+- **Chống trùng lặp thanh toán (Idempotency):** Middleware bắt lỗi `try/catch` và bỏ qua Redis. Request vẫn được xử lý, và tính toàn vẹn tài chính được bảo vệ bởi **Database Transaction & Atomic Update** ở tầng sâu.
+- **Đọc dữ liệu (Cache):** Tự động Fallback đọc trực tiếp từ PostgreSQL, đảm bảo khách hàng vẫn xem được danh sách chuyến xe và số dư ví (chỉ tăng nhẹ độ trễ).
+- **Duy trì phiên (Auth Revocation):** Nếu Redis chết, hàm check Revocation trả về `false` (Fail-open). Token ngắn hạn (15 phút) vẫn hoạt động bình thường.
 
 ---
 
@@ -172,7 +187,7 @@ Hệ thống đạt kết quả **100% Pass** ở tất cả các bộ test. Đ�
 | **Middleware/** (Phân quyền)  |    61.11%    |   37.34%   |   59.09%    |   59.73%   |
 | **Tổng quan dự án**           |  **37.64%**  | **20.19%** | **26.13%**  | **38.09%** |
 
-_(Chỉ số 37.64% là độ phủ tổng thể toàn dự án (bao gồm các file cấu hình, cronjob chưa cần test). Tuy nhiên, nhờ áp dụng Integration Test đi xuyên qua toàn bộ luồng (Router -> Middleware -> Controller -> Service -> DB), 100% các luồng nghiệp vụ cốt lõi (Core Business Logic) liên quan đến tài chính (Booking, Wallet, PayOS) đều đã được bao phủ hoàn toàn)_
+_(Chỉ số 37.64% là độ phủ tổng thể toàn dự án (bao gồm các file cấu hình, cronjob chưa cần test). Tuy nhiên, nhờ áp dụng Integration Test đi xuyên qua toàn bộ luồng, 100% các luồng nghiệp vụ cốt lõi liên quan đến tài chính (Booking, Wallet, PayOS) đều đã được bao phủ hoàn toàn)._
 
 ### 4.4. Kết Quả Load Test (k6 - Production Vercel)
 
@@ -270,6 +285,9 @@ ENCRYPTION_KEY="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 # Cấu hình tài khoản thật cho E2E Test (Playwright)
 USER_TEST="abcd@gmail.com"
 PASS_USER_TEST="abcd123@@"
+
+# Kill Switch (Bảo trì khẩn cấp khi Redis sập) - Chỉ thêm vào Vercel khi cần
+FORCE_MAINTENANCE="false"
 ```
 
 ---
@@ -334,17 +352,17 @@ _(Script này sẽ tự động: Generate Prisma -> Check lỗi TypeScript Backe
 ### Bước 2: Kiểm tra file cấu hình (Manual Check)
 
 - **`vercel.json`:** Đảm bảo cú pháp JSON hợp lệ. Đường dẫn `destination` trỏ đúng file Serverless (`/api/index.ts`).
-- **`.env.example` và Vercel Dashboard:** Kiểm tra xem có thêm biến môi trường mới nào không (đặc biệt là `AUDIT_SECRET_KEY`, `CRON_SECRET`, `GEMINI_API_KEY`, `ENCRYPTION_KEY`).
+- **`.env.example` và Vercel Dashboard:** Kiểm tra xem có thêm biến môi trường mới nào không (đặc biệt là `AUDIT_SECRET_KEY`, `CRON_SECRET`, `GEMINI_API_KEY`, `ENCRYPTION_KEY`, `FORCE_MAINTENANCE`).
 
 ### Bước 3: Quy trình Nâng cấp Database (Không Downtime)
 
 Nếu có sửa file `schema.prisma` và tạo migration mới:
 
-1. Lên web Admin, bấm **Bật Bảo Trì Khẩn Cấp**.
+1. Lên web Admin, bấm **Bật Bảo Trì Khẩn Cấp** (hoặc thêm biến `FORCE_MAINTENANCE=true` trên Vercel).
 2. Push code lên Vercel.
 3. Chờ Vercel build xong (Ready).
 4. Ở máy local, chạy `npx prisma migrate deploy` để cập nhật Database Production.
-5. Lên web Admin, bấm **Tắt Bảo Trì**.
+5. Lên web Admin, bấm **Tắt Bảo Trì** (hoặc xóa biến `FORCE_MAINTENANCE`).
 
 ---
 
@@ -355,7 +373,7 @@ Nếu có sửa file `schema.prisma` và tạo migration mới:
 - **Trình duyệt hỗ trợ Passkeys:** Trên iOS, khuyên dùng Safari hoặc Brave để tránh lỗi API WebAuthn của Chrome.
 - **Không hỗ trợ trả sau:** Hệ thống đã loại bỏ hoàn toàn tính năng "Đặt vé trả sau" (`LATER`) để chống chiếm ghế ảo. Bắt buộc thanh toán 100% qua Ví (`WALLET`).
 - **Định hướng mở rộng (Logistics & Cargo):** Module mã hóa AES-256-GCM được thiết kế theo hướng "Extensibility by Default" (mở rộng mà không làm gián đoạn hệ thống). Các trường PII (như số điện thoại liên hệ nhận hàng/giao hàng) khi được kích hoạt ở các pha nâng cấp tiếp theo sẽ tự động được mã hóa ở tầng ứng dụng trước khi ghi xuống cơ sở dữ liệu.
-- **Kiến trúc Hybrid (Modular Monolith + AI Service độc lập)**: Lõi hệ thống (Booking, Wallet, Auth) được thiết kế theo mô hình Modular Monolith với các Domain Service tách biệt. Riêng module AI Dynamic Pricing (FastAPI/Python) được triển khai độc lập dưới dạng một Adjunct Microservice (Dịch vụ vệ tinh) giao tiếp qua HTTP. Kiến trúc này tối ưu hóa việc sử dụng đa ngôn ngữ (Polyglot) mà không gây ra sự phức tạp của hệ thống Microservices phân tán (như quản lý Distributed Transaction hay Database-per-service)
+- **Kiến trúc Hybrid (Modular Monolith + AI Service độc lập):** Lõi hệ thống (Booking, Wallet, Auth) được thiết kế theo mô hình Modular Monolith với các Domain Service tách biệt. Riêng module AI Dynamic Pricing (FastAPI/Python) được triển khai độc lập dưới dạng một Adjunct Microservice (Dịch vụ vệ tinh) giao tiếp qua HTTP. Kiến trúc này tối ưu hóa việc sử dụng đa ngôn ngữ (Polyglot) mà không gây ra sự phức tạp của hệ thống Microservices phân tán.
 
 ---
 
