@@ -26,14 +26,27 @@ export class PaymentController {
 
   // PayOS gọi API này (Server-to-Server)
   static async webhook(req: Request, res: Response) {
-    try {
-      await PaymentService.handleWebhook(req.body);
-      // BẮT BUỘC phải trả về 200 để PayOS biết đã nhận thành công
-      return res.status(200).json({ success: true });
-    } catch (err: any) {
-      console.error("Webhook PayOS Error:", err.message);
-      // Vẫn trả 200 để PayOS không gọi lại liên tục nếu lỗi logic
+  try {
+    await PaymentService.handleWebhook(req.body);
+    return res.status(200).json({ success: true });
+  } catch (err: any) {
+    console.error("Webhook PayOS Error:", err.message);
+
+    // 1. Lỗi chữ ký hoặc dữ liệu sai logic: Trả 200 để Cổng thanh toán KHÔNG retry nữa
+    const isClientOrLogicError = 
+      err.message.includes("Chữ ký không hợp lệ") ||
+      err.message.includes("không hợp lệ") ||
+      err.statusCode === 400;
+
+    if (isClientOrLogicError) {
       return res.status(200).json({ success: false, message: err.message });
     }
+
+    // 2. Lỗi Database, Network, Redis chập chờn: Trả 500 để PayOS RETRY lại sau ít phút
+    return res.status(500).json({ 
+      success: false, 
+      message: "Lỗi hạ tầng tạm thời, yêu cầu retry!" 
+    });
   }
+}
 }

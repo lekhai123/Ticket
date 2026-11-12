@@ -1,5 +1,5 @@
 import type { Request, Response, NextFunction } from "express";
-import { redisPrimary } from "../Utils/redisLock";
+import { redisPrimary, redisBackup } from "../Utils/redisLock";
 
 export const checkMaintenance = async (
   req: Request,
@@ -7,10 +7,31 @@ export const checkMaintenance = async (
   next: NextFunction,
 ) => {
   try {
-    const isMaintenance = await redisPrimary.get("system:maintenance_mode");
+    // 1. KILL SWITCH: Ưu tiên check biến môi trường (Dành cho khẩn cấp)
+    let isMaintenance = process.env.FORCE_MAINTENANCE === "true";
 
-    if (isMaintenance === "true") {
-      // 1. Danh sách API BẮT BUỘC PHẢI CHẠY để duy trì phiên đăng nhập
+    // 2. Nếu Env không bật, thử đọc từ Redis
+    if (!isMaintenance) {
+      let activeRedis = redisPrimary;
+      if (
+        redisPrimary.status !== "ready" &&
+        redisBackup &&
+        redisBackup.status === "ready"
+      ) {
+        activeRedis = redisBackup;
+      }
+
+      try {
+        const redisStatus = await activeRedis.get("system:maintenance_mode");
+        if (redisStatus === "true") isMaintenance = true;
+      } catch (redisErr) {
+        console.warn(
+          "[MAINTENANCE] Không đọc được Redis. Bỏ qua check bảo trì.",
+        );
+      }
+    }
+
+    if (isMaintenance) {
       const isAuthRoute =
         req.path.includes("/login") ||
         req.path.includes("/refresh-token") ||
@@ -21,7 +42,6 @@ export const checkMaintenance = async (
         req.path.includes("/admin") ||
         req.path.includes("/system-status");
 
-      // 2. Cho phép tất cả các request GET (chỉ đọc dữ liệu) để user xem được vé, ví
       const isReadOnly = req.method === "GET";
 
       const isAllowedRoute = isAuthRoute || isSystemRoute || isReadOnly;
@@ -31,7 +51,7 @@ export const checkMaintenance = async (
           success: false,
           code: "MAINTENANCE_MODE",
           message:
-            "Hệ thống đang bảo trì nâng cấp để phục vụ bạn tốt hơn. Vui lòng quay lại sau ít phút!",
+            "Hệ thống đang bảo trì để thay thế Redis. Vui lòng quay lại sau!",
         });
       }
     }

@@ -301,17 +301,27 @@ export class AdminController {
   static toggleMaintenance = catchAsync(async (req: Request, res: Response) => {
     const { enable } = req.body;
 
-    if (enable) {
-      await redisPrimary.set("system:maintenance_mode", "true");
-      await redisPrimary.expire("system:maintenance_mode", 900);
-      return res
-        .status(200)
-        .json({ success: true, message: "Đã BẬT bảo trì khẩn cấp!" });
-    } else {
-      await redisPrimary.del("system:maintenance_mode");
-      return res.status(200).json({
-        success: true,
-        message: "Đã TẮT bảo trì. Hệ thống mở cửa trở lại!",
+    try {
+      if (enable) {
+        await redisPrimary.set("system:maintenance_mode", "true");
+        await redisPrimary.expire("system:maintenance_mode", 900);
+        return res
+          .status(200)
+          .json({ success: true, message: "Đã BẬT bảo trì khẩn cấp!" });
+      } else {
+        await redisPrimary.del("system:maintenance_mode");
+        return res.status(200).json({
+          success: true,
+          message: "Đã TẮT bảo trì. Hệ thống mở cửa trở lại!",
+        });
+      }
+    } catch (error: any) {
+      // BẮT LỖI REDIS SẬP
+      console.error("[ADMIN] Lỗi khi bật/tắt bảo trì:", error.message);
+      return res.status(503).json({
+        success: false,
+        message:
+          "Không thể thay đổi trạng thái bảo trì do Redis Primary đang mất kết nối. Vui lòng kiểm tra lại!",
       });
     }
   });
