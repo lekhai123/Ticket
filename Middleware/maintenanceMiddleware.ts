@@ -50,8 +50,7 @@ export const checkMaintenance = async (
         return res.status(503).json({
           success: false,
           code: "MAINTENANCE_MODE",
-          message:
-            "Hệ thống đang bảo trì để thay thế Redis. Vui lòng quay lại sau!",
+          message: "Hệ thống đang bảo trì. Vui lòng quay lại sau!",
         });
       }
     }

@@ -3,6 +3,7 @@ import { AIReconciliationAnalyzer } from "./aiReconciliationAnalyzer.service";
 import { sendNotificationEmail } from "../queues/mailQueue";
 import { AuditSigner } from "../Utils/auditSigner";
 import { Prisma } from "@prisma/client";
+
 export interface MismatchDetail {
   userId: number;
   walletId: number;
@@ -11,9 +12,11 @@ export interface MismatchDetail {
   difference: number;
   status: "DEBITED_AND_FROZEN" | "DEBT_GENERATED_AND_FROZEN";
 }
+
 type WalletWithUser = Prisma.WalletsGetPayload<{
   include: { user: { select: { email: true; fullName: true } } };
 }>;
+
 const ACTION_SIGN: Record<string, 1 | -1> = {
   TOP_UP: 1,
   MASS_GIFT_RECEIVED: 1,
@@ -21,7 +24,6 @@ const ACTION_SIGN: Record<string, 1 | -1> = {
   REFUND_TICKET_PAYMENT: 1,
   CANCEL_TICKET_REFUND: 1,
   CREDIT: 1,
-
   BOOK_TICKET_PAYMENT: -1,
   BOOK_TICKET_BATCH: -1,
   MASS_GIFT_REVOKED: -1,
@@ -37,17 +39,16 @@ export class ReconciliationService {
       "[RECONCILIATION] Bắt đầu tiến trình đối soát & Tự động phục hồi...",
     );
     const startTime = Date.now();
-
     const reconBatchId = `AIOPS_RECON_${new Date().toISOString().split("T")[0]}`;
-
     const mismatchedAccounts: MismatchDetail[] = [];
+
     let totalWalletsChecked = 0;
     let cursorId: number | undefined = undefined;
     const BATCH_SIZE = 100;
 
     try {
       while (true) {
-        // Thêm : WalletWithUser[] vào đây
+        // Quét TOÀN BỘ ví (kể cả đã khóa)
         const wallets: WalletWithUser[] = await prisma.wallets.findMany({
           take: BATCH_SIZE,
           skip: cursorId ? 1 : 0,
@@ -62,10 +63,12 @@ export class ReconciliationService {
 
         const userIds = wallets.map((w) => w.userId);
 
+        // Chỉ lấy các log chưa bị vô hiệu hóa
         const allAuditLogs = await prisma.auditLog.findMany({
           where: {
             userId: { in: userIds },
             resource: "Wallets",
+            isRevoked: false,
             action: {
               notIn: [
                 "SYSTEM_ALERT_BALANCE_MISMATCH",
@@ -88,11 +91,14 @@ export class ReconciliationService {
           const auditLogs = logsByUser.get(wallet.userId) || [];
           let calculatedBalance = 0;
           let hasTamperedLog = false;
+          const invalidLogIds: string[] = [];
+          const wasAlreadyLocked = wallet.isLocked;
 
           for (const log of auditLogs) {
             const newData = log.newData as Record<string, any> | null;
             if (!newData || typeof newData.amount !== "number") continue;
 
+            // ✅ KIỂM TRA CHỮ KÝ 100% (Không có ngoại lệ)
             const isValidSignature = AuditSigner.verifySignature(
               {
                 requestId: log.requestId,
@@ -111,6 +117,7 @@ export class ReconciliationService {
                 `[SECURITY ALERT] Phát hiện AuditLog ID ${log.id} của User ${wallet.userId} bị can thiệp trái phép!`,
               );
               hasTamperedLog = true;
+              invalidLogIds.push(log.id);
               continue;
             }
 
@@ -166,7 +173,7 @@ export class ReconciliationService {
                     batchId: reconBatchId,
                     resource: "Wallets",
                     resourceId: wallet.id.toString(),
-                    oldData: { actualBalance, isLocked: wallet.isLocked },
+                    oldData: { actualBalance, isLocked: wasAlreadyLocked },
                     newData: {
                       amount: hasTamperedLog ? 0 : -difference,
                       adjustedAmount: hasTamperedLog ? 0 : -difference,
@@ -176,15 +183,23 @@ export class ReconciliationService {
                       isLocked: true,
                       isDebt: isDebt,
                       reason: hasTamperedLog
-                        ? "Phát hiện can thiệp trái phép vào lịch sử giao dịch (AuditLog bị sửa) -> Khóa ví bảo vệ, không tự động trừ tiền!"
+                        ? "Phát hiện can thiệp trái phép vào lịch sử giao dịch -> Khóa ví bảo vệ!"
                         : "Cân bằng lại số dư chuẩn & Khóa ví chờ Admin duyệt",
                     },
                     ipAddress: "127.0.0.1 (CRON_AIOPS)",
                   },
                 });
+
+                // Đánh dấu các log bị lỗi thành "đã thu hồi" để lần sau không quét lại
+                if (invalidLogIds.length > 0) {
+                  await tx.auditLog.updateMany({
+                    where: { id: { in: invalidLogIds } },
+                    data: { isRevoked: true },
+                  });
+                }
               });
 
-              if (wallet.user?.email) {
+              if (!wasAlreadyLocked && wallet.user?.email) {
                 await sendNotificationEmail({
                   email: wallet.user.email,
                   type: "WALLET_LOCKED_AI",
@@ -214,7 +229,6 @@ export class ReconciliationService {
     }
 
     const duration = Date.now() - startTime;
-
     let logsSample: any[] = [];
     let aiAnalysis = null;
 
@@ -225,20 +239,16 @@ export class ReconciliationService {
         orderBy: { createdAt: "desc" },
       });
 
-      //Khai báo biến timeoutId để có thể clear
       let timeoutId: NodeJS.Timeout;
-
       try {
         const aiPromise = AIReconciliationAnalyzer.analyzeMismatches(
           mismatchedAccounts,
           totalWalletsChecked,
           logsSample,
         );
-
         const timeoutPromise = new Promise((_, reject) => {
           timeoutId = setTimeout(() => reject(new Error("AI_TIMEOUT")), 25000);
         });
-
         aiAnalysis = (await Promise.race([aiPromise, timeoutPromise])) as any;
       } catch (aiError: any) {
         console.error(
@@ -247,8 +257,7 @@ export class ReconciliationService {
         );
         aiAnalysis = {
           riskLevel: "HIGH",
-          rootCauseAnalysis:
-            "Hệ thống AI phản hồi quá chậm hoặc đang quá tải. Vui lòng thử lại sau.",
+          rootCauseAnalysis: "Hệ thống AI phản hồi quá chậm hoặc đang quá tải.",
           recommendedAction:
             "Kiểm tra thủ công danh sách mảng mismatchedAccounts.",
         };
